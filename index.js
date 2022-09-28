@@ -6,7 +6,6 @@ import aesjs from "aes-js";
 
 const log = console.log;
 
-// password generator function
 const generatePassword = () => {
   const charset =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -18,7 +17,6 @@ const generatePassword = () => {
   return password;
 };
 
-// encrypt function
 const encryptPassword = (password) => {
   const textBytes = aesjs.utils.utf8.toBytes(password);
   const aesCtr = new aesjs.ModeOfOperation.ctr(
@@ -31,7 +29,6 @@ const encryptPassword = (password) => {
   return encryptedHex;
 };
 
-// decrypt function
 const decryptPassword = (password) => {
   const encryptedBytes = aesjs.utils.hex.toBytes(password);
   const aesCtr = new aesjs.ModeOfOperation.ctr(
@@ -44,7 +41,6 @@ const decryptPassword = (password) => {
   return decryptedText;
 };
 
-// get passwords function
 const getPasswords = () => {
   readFile("passwords.txt", "utf8", (err, data) => {
     if (err) {
@@ -143,7 +139,6 @@ const questions = [
   },
 ];
 
-// add password function
 function addPassword() {
   inquirer
     .prompt(questions)
@@ -182,16 +177,12 @@ function addPassword() {
     });
 }
 
-// delete passwords function
 const deletePassword = () => {
-  // get the passwords from the file
   readFile("passwords.txt", "utf8", (err, data) => {
     if (err) {
       log(chalk.red(err));
     } else {
-      // split the passwords into an array without name and identifier
       const passwords = data.split(" - ");
-      // get the name of the password to delete
       inquirer
         .prompt([
           {
@@ -231,7 +222,6 @@ const deletePassword = () => {
   });
 };
 
-// manage the passwords
 const managePasswords = () => {
   const manageQuestions = [
     {
