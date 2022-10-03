@@ -12,42 +12,46 @@ const getPasswords = () => {
     if (err) {
       log(chalk.red("Error reading file from disk:", err));
     } else if (!data) {
-      // check if there are any apps in the file
-        log(chalk.red("No password saved, please add a new password"));
-        managePasswords();
-      } else {
-        // get app names to display as choices
-        const lines = data.split(/\r?\n/);
-        const appNames = [];
-        lines.forEach((line) => {
-          const [app] = line.split(" - ");
-          appNames.push(app);
-        });
+      log(chalk.red("No password saved, please add a new password"));
+      managePasswords();
+    } else {
+      // get app names to display as choices
+      const lines = data.split(/\r?\n/);
+      const appNames = [];
+      lines.forEach((line) => {
+        const [app] = line.split(" - ");
+        appNames.push(app);
+      });
 
-        // ask user which app to get the password from
-        inquirer
-          .prompt([
-            {
-              type: "list",
-              name: "app",
-              message: "Which app do you want to get the password for?",
-              choices: appNames,
-            },
-          ])
-          .then((answer) => {
-            lines.forEach((line) => {
-              const [app, identifier, password] = line.split(" - ");
-              if (app === answer.app) {
-                const decryptedPassword = decryptPassword(password);
-                log(
-                  chalk.green(`The password for ${app} is ${decryptedPassword}`)
-                );
-              }
-            });
+      // remove empty line
+      appNames.pop();
+
+      // ask user which app to get the password from
+      inquirer
+        .prompt([
+          {
+            type: "list",
+            name: "app",
+            message: "Which app do you want to get the password for?",
+            choices: appNames,
+          },
+        ])
+        .then((answer) => {
+          lines.forEach((line) => {
+            const [app, identifier, password] = line.split(" - ");
+            if (app === answer.app) {
+              const decryptedPassword = decryptPassword(password);
+              log(
+                chalk.green(`The password for ${app} is ${decryptedPassword}`)
+              );
+
+              managePasswords();
+            }
           });
-      }
+        });
+    }
   });
-}
+};
 
 const questions = [
   {
@@ -151,8 +155,6 @@ const addPassword = () => {
           );
         } else {
           const encryptedUserPassword = encryptPassword(answers.userPassword);
-          log(chalk.green(`Encrypted password: ${encryptedUserPassword}`));
-
           // write password to file
           writeFile(
             "passwords.txt",
@@ -163,7 +165,7 @@ const addPassword = () => {
               if (err) {
                 log(chalk.red("Error writing file:", err));
               } else {
-                log(chalk.green("Successfully wrote file"));
+                log(chalk.green("Successfully saved password"));
               }
 
               managePasswords();
@@ -199,7 +201,10 @@ const deletePassword = () => {
         appNames.push(app);
       });
 
-      // ask user which app to delete
+      // remove empty line
+      appNames.pop();
+
+      // ask user which app to delete password for
       inquirer
         .prompt([
           {
@@ -210,7 +215,7 @@ const deletePassword = () => {
           },
         ])
         .then((answer) => {
-          // filter the passwords array to remove the password to delete
+          // filter the line to delete from the file
           const filteredPasswords = lines.filter(
             (line) => !line.includes(answer.password)
           );
