@@ -1,16 +1,5 @@
 import aesjs from "aes-js";
 
-function writeToFile(path, data) {
-  // write some data to a file
-  fs.writeFile(path, data, (err) => {
-    if (err) {
-      console.log(err);
-    } else {
-      console.log("Success!");
-    }
-  });
-}
-
 const generatePassword = () => {
   const charset =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -42,4 +31,29 @@ const decryptPassword = (password) => {
   return decryptedText;
 };
 
-export { writeToFile, generatePassword, encryptPassword, decryptPassword };
+
+function writeToFile(path, data) {
+  return new Promise((resolve, reject) => {
+    fs.writeFile(path, data, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+const readFromFile = (path) => {
+  return new Promise((resolve, reject) => {
+    fs.readFile(path, "utf8", (err, data) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(data);
+      }
+    });
+  });
+};
+
+export { generatePassword, encryptPassword, decryptPassword };
