@@ -1,11 +1,12 @@
 // modules
 import inquirer from "inquirer";
 import chalk from "chalk";
-import { readFile, writeFile } from "fs";
+import { readFile, writeFile, existsSync } from "fs";
 
 import { generatePassword, encryptPassword, decryptPassword } from "./utils.js";
 
-const log = console.log;
+var log = console.log;
+var isAuthenticated = false;
 
 const getPasswords = () => {
   readFile("passwords.txt", "utf8", (err, data) => {
@@ -15,7 +16,7 @@ const getPasswords = () => {
       log(chalk.red("No password saved, please add a new password"));
       managePasswords();
     } else {
-      // get app names to display as choices
+      // get app names to display as choices for user to select from
       const lines = data.split(/\r?\n/);
       const appNames = [];
       lines.forEach((line) => {
@@ -23,7 +24,7 @@ const getPasswords = () => {
         appNames.push(app);
       });
 
-      // remove empty line
+      // remove empty line from array of app names
       appNames.pop();
 
       // ask user which app to get the password from
@@ -34,20 +35,30 @@ const getPasswords = () => {
             name: "app",
             message: "Which app do you want to get the password for?",
             choices: appNames,
+
+            // choices: [appNames, new inquirer.Separator(), "Cancel"],
           },
         ])
         .then((answer) => {
-          lines.forEach((line) => {
-            const [app, identifier, password] = line.split(" - ");
-            if (app === answer.app) {
-              const decryptedPassword = decryptPassword(password);
-              log(
-                chalk.green(`The password for ${app} is ${decryptedPassword}`)
-              );
+          if (answer.app === "Cancel") {
+            managePasswords();
+          } else {
+            lines.forEach((line) => {
+              const [app, identifier, password] = line.split(" - ");
+              if (app === answer.app) {
+                const decryptedPassword = decryptPassword(password);
+                log(
+                  chalk.green(
+                    "\n" +
+                      `Identifier: ${identifier}, Password: ${decryptedPassword}` +
+                      "\n"
+                  )
+                );
 
-              managePasswords();
-            }
-          });
+                managePasswords();
+              }
+            });
+          }
         });
     }
   });
@@ -215,19 +226,23 @@ const deletePassword = () => {
           },
         ])
         .then((answer) => {
-          // filter the line to delete from the file
-          const filteredPasswords = lines.filter(
-            (line) => !line.includes(answer.password)
-          );
+          if (answer.password === "Cancel") {
+            managePasswords();
+          } else {
+            // filter the line to delete from the file
+            const filteredPasswords = lines.filter(
+              (line) => !line.includes(answer.password)
+            );
 
-          // save the filtered passwords to the file
-          writeFile("passwords.txt", filteredPasswords.join("\n"), (err) => {
-            if (err) {
-              log(chalk.red(err));
-            } else {
-              log(chalk.green("Password deleted"));
-            }
-          });
+            // save the filtered passwords to the file
+            writeFile("passwords.txt", filteredPasswords.join("\n"), (err) => {
+              if (err) {
+                log(chalk.red(err));
+              } else {
+                log(chalk.green("Password deleted"));
+              }
+            });
+          }
         })
         .catch((error) => {
           if (error.isTtyError) {
@@ -244,34 +259,195 @@ const deletePassword = () => {
   });
 };
 
-const managePasswords = () => {
-  const manageQuestions = [
-    {
-      type: "list",
-      name: "action",
-      message: "What would you like to do?",
-      choices: ["Add password", "View passwords", "Delete passwords", "Exit"],
-    },
-  ];
+const modifyMasterPassword = () => {
+  inquirer
+    .prompt([
+      {
+        type: "password",
+        name: "oldMasterPassword",
+        message: "Enter your old master password",
 
-  inquirer.prompt(manageQuestions).then((answers) => {
-    switch (answers.action) {
-      case "Add password":
-        addPassword();
-        break;
-      case "View passwords":
-        // view passwords
-        getPasswords();
-        break;
-      case "Delete passwords":
-        // delete passwords
-        deletePassword();
-        break;
-      case "Exit":
-        // exit
-        break;
+        validate: function (value) {
+          if (value.length) {
+            return true;
+          } else {
+            return "Please enter your old master password";
+          }
+        },
+      },
+      {
+        type: "password",
+        name: "newMasterPassword",
+        message: "Enter your new master password",
+
+        validate: function (value) {
+          if (value.length) {
+            return true;
+          } else {
+            return "Please enter your new master password";
+          }
+        },
+      },
+    ])
+    .then((answers) => {
+      const { oldMasterPassword, newMasterPassword } = answers;
+
+      // check if old master password is correct before changing it to new master password
+      readFile("masterPassword.txt", "utf8", (err, data) => {
+        if (err) {
+          log(chalk.red(err));
+        } else {
+          const decryptedMasterPassword = decryptPassword(data);
+
+          if (oldMasterPassword === decryptedMasterPassword) {
+            // encrypt new master password
+            const encryptedMasterPassword = encryptPassword(newMasterPassword);
+            // save new master password to file
+            writeFile("masterPassword.txt", encryptedMasterPassword, (err) => {
+              if (err) {
+                log(chalk.red(err));
+              } else {
+                log(chalk.green("Master password updated" + "\n"));
+              }
+            });
+          } else {
+            log(chalk.red("Incorrect master password" + "\n"));
+
+            modifyMasterPassword();
+          }
+        }
+      });
+    })
+    .catch((error) => {
+      if (error.isTtyError) {
+        log(
+          chalk.red("Prompt couldn't be rendered in the current environment")
+        );
+      } else {
+        log(chalk.red(error));
+      }
+    });
+};
+
+const managePasswords = () => {
+  if (existsSync("masterPassword.txt")) {
+    if (!isAuthenticated) {
+      // ask user for master password
+      inquirer
+        .prompt([
+          {
+            type: "password",
+            name: "masterPassword",
+            message: "Enter your master password",
+          },
+        ])
+        .then((answer) => {
+          readFile("masterPassword.txt", "utf8", (err, data) => {
+            if (err) {
+              log(chalk.red(err));
+            } else {
+              const decryptedMasterPassword = decryptPassword(data);
+
+              if (answer.masterPassword === decryptedMasterPassword) {
+                isAuthenticated = true;
+                log(
+                  chalk.green("Authentication successful" + " " + "👍" + "\n")
+                );
+                managePasswords();
+              } else {
+                log(
+                  chalk.red(
+                    "Wrong master password. Authentication failed" +
+                      " " +
+                      "👎" +
+                      "\n"
+                  )
+                );
+                managePasswords();
+              }
+            }
+          });
+        })
+        .catch((error) => {
+          if (error.isTtyError) {
+            log(
+              chalk.red(
+                "Prompt couldn't be rendered in the current environment"
+              )
+            );
+          } else {
+            log(chalk.red(error));
+          }
+        });
+    } else {
+      const manageQuestions = [
+        {
+          type: "list",
+          name: "action",
+          message: "What would you like to do?",
+          choices: [
+            "Add password",
+            "View passwords",
+            "Delete passwords",
+            "Modify master password",
+            "Exit",
+          ],
+        },
+      ];
+
+      inquirer.prompt(manageQuestions).then((answers) => {
+        switch (answers.action) {
+          case "Add password":
+            addPassword();
+            break;
+          case "View passwords":
+            getPasswords();
+            break;
+          case "Delete passwords":
+            deletePassword();
+            break;
+          case "Modify master password":
+            modifyMasterPassword();
+            break;
+          case "Exit":
+            break;
+        }
+      });
     }
-  });
+  } else {
+    // ask user to set a master password if not already set
+    inquirer
+      .prompt([
+        {
+          type: "password",
+          name: "masterPassword",
+          message: "Set a master password",
+        },
+      ])
+      .then((answer) => {
+        writeFile(
+          "masterPassword.txt",
+          encryptPassword(answer.masterPassword),
+          (err) => {
+            if (err) {
+              log(chalk.red(err));
+            } else {
+              log(chalk.green("Master password saved"));
+              managePasswords();
+            }
+          }
+        );
+      })
+      .catch((error) => {
+        if (error.isTtyError) {
+          log(
+            chalk.red("Prompt couldn't be rendered in the current environment")
+          );
+        } else {
+          log(chalk.red(error));
+        }
+      });
+  }
 };
 
 managePasswords();
