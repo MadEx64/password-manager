@@ -1,14 +1,33 @@
 import aesjs from "aes-js";
 
 const generatePassword = () => {
+  // generate a random password between 8 and 16 characters, at least one number, one capital letter or one special character (e.g. !@#$%^&*)
   const charset =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let retVal = "";
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.!@#$%^&*_+=/?";
+  let password = "";
+  let length = Math.floor(Math.random() * 8) + 8;
 
-  for (let i = 0, n = charset.length; i < 16; ++i) {
-    retVal += charset.charAt(Math.floor(Math.random() * n));
+  while (length--) {
+    password += charset[Math.floor(Math.random() * charset.length)];
+
+    if (length === 0) {
+      if (!password.match(/[A-Z]/)) {
+        password += charset[Math.floor(Math.random() * 26) + 26];
+      } else if (!password.match(/[0-9]/)) {
+        password += charset[Math.floor(Math.random() * 10) + 52];
+      } else if (!password.match(/[-.!@#$%^&*_+=/?]/)) {
+        password += charset[Math.floor(Math.random() * 16) + 62];
+      }
+    }
+
+    // shuffle the password
+    password = password
+      .split("")
+      .sort(() => Math.random() - 0.5)
+      .join("");
   }
-  return retVal;
+
+  return password;
 };
 
 const encryptPassword = (password) => {
@@ -31,29 +50,28 @@ const decryptPassword = (password) => {
   return decryptedText;
 };
 
+// function writeToFile(path, data) {
+//   return new Promise((resolve, reject) => {
+//     fs.writeFile(path, data, (err) => {
+//       if (err) {
+//         reject(err);
+//       } else {
+//         resolve();
+//       }
+//     });
+//   });
+// }
 
-function writeToFile(path, data) {
-  return new Promise((resolve, reject) => {
-    fs.writeFile(path, data, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
-}
-
-const readFromFile = (path) => {
-  return new Promise((resolve, reject) => {
-    fs.readFile(path, "utf8", (err, data) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
-  });
-};
+// const readFromFile = (path) => {
+//   return new Promise((resolve, reject) => {
+//     fs.readFile(path, "utf8", (err, data) => {
+//       if (err) {
+//         reject(err);
+//       } else {
+//         resolve(data);
+//       }
+//     });
+//   });
+// };
 
 export { generatePassword, encryptPassword, decryptPassword };
