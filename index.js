@@ -11,9 +11,11 @@ var isAuthenticated = false;
 const getPasswords = () => {
   readFile("passwords.txt", "utf8", (err, data) => {
     if (err) {
-      log(chalk.red("Error reading file from disk:", err));
+      log(chalk.red("Error reading file from disk:", err + "\n"));
     } else if (!data) {
-      log(chalk.red("No password saved, please add a new password"));
+      log(
+        chalk.red("\n" + "No password saved, please add a new password" + "\n")
+      );
       managePasswords();
     } else {
       // get app names to display as choices for user to select from
@@ -24,7 +26,7 @@ const getPasswords = () => {
         appNames.push(app);
       });
 
-      // remove empty line from array of app names
+      // remove empty line from app names
       appNames.pop();
 
       // ask user which app to get the password from
@@ -40,25 +42,21 @@ const getPasswords = () => {
           },
         ])
         .then((answer) => {
-          if (answer.app === "Cancel") {
-            managePasswords();
-          } else {
-            lines.forEach((line) => {
-              const [app, identifier, password] = line.split(" - ");
-              if (app === answer.app) {
-                const decryptedPassword = decryptPassword(password);
-                log(
-                  chalk.green(
-                    "\n" +
-                      `Identifier: ${identifier}, Password: ${decryptedPassword}` +
-                      "\n"
-                  )
-                );
+          lines.forEach((line) => {
+            const [app, identifier, password] = line.split(" - ");
+            if (app === answer.app) {
+              const decryptedPassword = decryptPassword(password);
+              log(
+                chalk.green.bold(
+                  "\n" +
+                    `Identifier: ${identifier}, Password: ${decryptedPassword}` +
+                    "\n"
+                )
+              );
 
-                managePasswords();
-              }
-            });
-          }
+              managePasswords();
+            }
+          });
         });
     }
   });
@@ -156,9 +154,13 @@ const addPassword = () => {
             { flag: "a" },
             (err) => {
               if (err) {
-                log(chalk.red("Error trying to save password:", err));
+                log(
+                  chalk.red("\n" + "Error trying to save password:", err + "\n")
+                );
               } else {
-                log(chalk.green("Successfully saved password"));
+                log(
+                  chalk.green.bold("\n" + "Successfully saved password" + "\n")
+                );
               }
 
               managePasswords();
@@ -174,9 +176,11 @@ const addPassword = () => {
             { flag: "a" },
             (err) => {
               if (err) {
-                log(chalk.red("Error writing file:", err));
+                log(chalk.red("\n" + "Error writing file:", err + "\n"));
               } else {
-                log(chalk.green("Successfully saved password"));
+                log(
+                  chalk.green.bold("\n" + "Successfully saved password" + "\n")
+                );
               }
 
               managePasswords();
@@ -201,7 +205,9 @@ const deletePassword = () => {
     if (err) {
       log(chalk.red(err));
     } else if (!data) {
-      log(chalk.red("No password saved, please add a new password"));
+      log(
+        chalk.red("\n" + "No password saved, please add a new password" + "\n")
+      );
       managePasswords();
     } else {
       const lines = data.split(/\r?\n/);
@@ -226,23 +232,21 @@ const deletePassword = () => {
           },
         ])
         .then((answer) => {
-          if (answer.password === "Cancel") {
-            managePasswords();
-          } else {
-            // filter the line to delete from the file
-            const filteredPasswords = lines.filter(
-              (line) => !line.includes(answer.password)
-            );
+          // filter the line containing the password to delete
+          const filteredPasswords = lines.filter(
+            (line) => !line.includes(answer.password)
+          );
 
-            // save the filtered passwords to the file
-            writeFile("passwords.txt", filteredPasswords.join("\n"), (err) => {
-              if (err) {
-                log(chalk.red(err));
-              } else {
-                log(chalk.green("Password deleted"));
-              }
-            });
-          }
+          // save the filtered passwords to the file
+          writeFile("passwords.txt", filteredPasswords.join("\n"), (err) => {
+            if (err) {
+              log(chalk.red(err));
+            } else {
+              log(chalk.green.bold("\n" + "Password deleted" + "\n"));
+
+              managePasswords();
+            }
+          });
         })
         .catch((error) => {
           if (error.isTtyError) {
@@ -288,9 +292,22 @@ const modifyMasterPassword = () => {
           }
         },
       },
+      {
+        type: "password",
+        name: "confirmPassword",
+        message: "Confirm password",
+
+        validate: function (value) {
+          if (value.length) {
+            return true;
+          } else {
+            return "Please confirm your password";
+          }
+        },
+      },
     ])
     .then((answers) => {
-      const { oldMasterPassword, newMasterPassword } = answers;
+      const { oldMasterPassword, newMasterPassword, confirmPassword } = answers;
 
       // check if old master password is correct before changing it to new master password
       readFile("masterPassword.txt", "utf8", (err, data) => {
@@ -300,18 +317,29 @@ const modifyMasterPassword = () => {
           const decryptedMasterPassword = decryptPassword(data);
 
           if (oldMasterPassword === decryptedMasterPassword) {
-            // encrypt new master password
-            const encryptedMasterPassword = encryptPassword(newMasterPassword);
-            // save new master password to file
-            writeFile("masterPassword.txt", encryptedMasterPassword, (err) => {
-              if (err) {
-                log(chalk.red(err));
-              } else {
-                log(chalk.green("Master password updated" + "\n"));
-              }
-            });
+            if (newMasterPassword === confirmPassword) {
+              // encrypt new master password
+              const encryptedMasterPassword =
+                encryptPassword(newMasterPassword);
+              // save new master password to file
+              writeFile(
+                "masterPassword.txt",
+                encryptedMasterPassword,
+                (err) => {
+                  if (err) {
+                    log(chalk.red(err));
+                  } else {
+                    log(
+                      chalk.green.bold("\n" + "Master password updated" + "\n")
+                    );
+                  }
+                }
+              );
+            } else {
+              log(chalk.red("\n" + "Passwords do not match" + "\n"));
+            }
           } else {
-            log(chalk.red("Incorrect master password" + "\n"));
+            log(chalk.red("\n" + "Incorrect master password" + "\n"));
 
             modifyMasterPassword();
           }
@@ -351,13 +379,16 @@ const managePasswords = () => {
               if (answer.masterPassword === decryptedMasterPassword) {
                 isAuthenticated = true;
                 log(
-                  chalk.green("Authentication successful" + " " + "👍" + "\n")
+                  chalk.green.bold(
+                    "\n" + "Authentication successful" + " " + "👍" + "\n"
+                  )
                 );
                 managePasswords();
               } else {
                 log(
                   chalk.red(
-                    "Wrong master password. Authentication failed" +
+                    "\n" +
+                      "Wrong master password. Authentication failed" +
                       " " +
                       "👎" +
                       "\n"
@@ -432,7 +463,7 @@ const managePasswords = () => {
             if (err) {
               log(chalk.red(err));
             } else {
-              log(chalk.green("Master password saved"));
+              log(chalk.green.bold("\n " + "Master password saved" + "\n"));
               managePasswords();
             }
           }
