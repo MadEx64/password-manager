@@ -2,9 +2,20 @@
   "name": "password-manager",
   "version": "1.0.0",
   "description": "Simple CLI password manager with password generator",
+  "keywords": [
+    "password",
+    "manager",
+    "generator",
+    "cli",
+    "command-line",
+    "password-manager",
+    "password-generator"
+  ],
   "main": "index.js",
+  "bin": {
+    "password-manager": "index.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js"
   },
   "type": "module",

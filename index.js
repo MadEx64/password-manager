@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // modules
 import inquirer from "inquirer";
 import chalk from "chalk";
@@ -11,6 +13,23 @@ var isAuthenticated = false;
 var path = "./passwords.txt";
 var masterPasswordPath = "./masterPassword.txt";
 
+const getLines = (data) => {
+  return data.split(/\r?\n/);
+};
+
+const getAppNames = (lines) => {
+  const appNames = [];
+  lines.forEach((line) => {
+    const [app] = line.split(" - ");
+    appNames.push(app);
+  });
+
+  // remove empty line from app names
+  appNames.pop();
+
+  return appNames;
+};
+
 const managePasswords = () => {
   authenticateUser();
 
@@ -22,9 +41,10 @@ const managePasswords = () => {
         message: "What would you like to do?",
         choices: [
           "Add password",
-          "View passwords",
-          "Delete passwords",
-          "Modify master password",
+          "View password",
+          "Delete password",
+          "Update password",
+          "Update master password",
           "Exit",
         ],
       },
@@ -35,16 +55,20 @@ const managePasswords = () => {
         case "Add password":
           addPassword();
           break;
-        case "View passwords":
+        case "View password":
           getPasswords();
           break;
-        case "Delete passwords":
+        case "Delete password":
           deletePassword();
           break;
-        case "Modify master password":
-          modifyMasterPassword();
+        case "Update password":
+          updatePassword();
+          break;
+        case "Update master password":
+          updateMasterPassword();
           break;
         case "Exit":
+          log(chalk.green("Thank you for using password-manager !"));
           break;
       }
     });
@@ -177,16 +201,8 @@ const getPasswords = () => {
       managePasswords();
     } else {
       // get app names to display as choices for user to select from
-      const lines = data.split(/\r?\n/);
-      const appNames = [];
-      lines.forEach((line) => {
-        const [app] = line.split(" - ");
-        appNames.push(app);
-      });
-
-      // remove empty line from app names
-      appNames.pop();
-
+      const lines = getLines(data);
+      const appNames = getAppNames(lines);
       // ask user which app to get the password from
       inquirer
         .prompt([
@@ -195,8 +211,6 @@ const getPasswords = () => {
             name: "app",
             message: "Which app do you want to get the password for ?",
             choices: appNames,
-
-            // choices: [appNames, new inquirer.Separator(), "Cancel"],
           },
         ])
         .then((answer) => {
@@ -419,16 +433,8 @@ const deletePassword = () => {
       );
       managePasswords();
     } else {
-      const lines = data.split(/\r?\n/);
-      // loop through lines to get app names
-      const appNames = [];
-      lines.forEach((line) => {
-        const [app] = line.split(" - ");
-        appNames.push(app);
-      });
-
-      // remove empty line
-      appNames.pop();
+      const lines = getLines(data);
+      const appNames = getAppNames(lines);
 
       // ask user which app to delete password for
       inquirer
@@ -472,7 +478,122 @@ const deletePassword = () => {
   });
 };
 
-const modifyMasterPassword = () => {
+const updatePassword = () => {
+  readFile(path, "utf8", (err, data) => {
+    if (err) {
+      log(chalk.red(err));
+    } else if (!data) {
+      log(
+        chalk.red("\n" + "No password saved, please add a new password" + "\n")
+      );
+    } else {
+      const lines = getLines(data);
+      const appNames = getAppNames(lines);
+
+      // ask user which app to update password for
+      inquirer
+        .prompt([
+          {
+            type: "list",
+            name: "password",
+            message: "Select the password to update",
+            choices: appNames,
+          },
+        ])
+        .then((answer) => {
+          const lineToUpdate = lines.find((line) =>
+            line.includes(answer.password)
+          );
+
+          const index = lines.indexOf(lineToUpdate);
+
+          // ask user for new password or generate one if user wants to
+          inquirer
+            .prompt([
+              {
+                type: "confirm",
+                name: "generatedPassword",
+                message: "Would you like to generate a password?",
+                default: true,
+
+                validate: function (value) {
+                  var pass = value.match(/^(yes|y|no|n)$/i);
+                  if (pass) {
+                    return true;
+                  }
+
+                  return "Please enter a valid answer (y/n)";
+                },
+
+                filter: function (value) {
+                  return value.toLowerCase();
+                },
+              },
+              {
+                type: "password",
+                name: "newPassword",
+                message: "Enter the new password:",
+                when: (answers) =>
+                  answers.generatedPassword === "n" ||
+                  answers.generatedPassword === "no",
+                validate: function (value) {
+                  if (value.length < 8) {
+                    return "Password must be at least 8 characters";
+                  } else {
+                    return true;
+                  }
+                },
+                mask: "*",
+              },
+              {
+                type: "password",
+                name: "confirmPassword",
+                message: "Confirm the password:",
+                when: (answers) =>
+                  answers.generatedPassword === "n" ||
+                  answers.generatedPassword === "no",
+                validate: function (value, answers) {
+                  if (value === answers.newPassword) {
+                    return true;
+                  } else {
+                    return "Passwords do not match";
+                  }
+                },
+                mask: "*",
+              },
+            ])
+            .then((answers) => {
+              if (answers.generatedPassword === "yes" || "y") {
+                const encryptedPassword = encryptPassword(generatePassword());
+
+                lines[index] = lineToUpdate.replace(
+                  lineToUpdate.split(" - ")[2],
+                  encryptedPassword
+                );
+              } else {
+                // update the line with the new password
+                lines[index] = lineToUpdate.replace(
+                  lineToUpdate.split(" - ")[2],
+                  encryptPassword(answers.newPassword)
+                );
+              }
+
+              writeFile(path, lines.join("\n"), (err) => {
+                if (err) {
+                  log(chalk.red(err));
+                } else {
+                  log(chalk.green.bold("\n" + "Password updated !" + "\n"));
+
+                  managePasswords();
+                }
+              });
+            });
+        });
+    }
+  });
+};
+
+const updateMasterPassword = () => {
   inquirer
     .prompt([
       {
@@ -546,7 +667,7 @@ const modifyMasterPassword = () => {
           } else {
             log(chalk.red("\n" + "Incorrect master password !"));
 
-            modifyMasterPassword();
+            updateMasterPassword();
           }
         }
       });

@@ -10,5 +10,5 @@ Clone then run commands :
 
 ```
 npm install
-npm run start
+npm start
 ```
