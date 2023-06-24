@@ -6,28 +6,20 @@ import chalk from "chalk";
 import { readFile, writeFile, existsSync } from "fs";
 import clipboard from "clipboardy";
 
-import { generatePassword, encryptPassword, decryptPassword } from "./utils.js";
+import { generatePassword, encryptPassword, decryptPassword, getAppNames } from "./utils.js";
 
 var log = console.log;
 var isAuthenticated = false;
 var path = "./passwords.txt";
 var masterPasswordPath = "./masterPassword.txt";
 
+/**
+ * 
+ * @param {string} data
+ * @returns {string[]} an array of lines
+ */
 const getLines = (data) => {
   return data.split(/\r?\n/);
-};
-
-const getAppNames = (lines) => {
-  const appNames = [];
-  lines.forEach((line) => {
-    const [app] = line.split(" - ");
-    appNames.push(app);
-  });
-
-  // remove empty line from app names
-  appNames.pop();
-
-  return appNames;
 };
 
 const managePasswords = () => {

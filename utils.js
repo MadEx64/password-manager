@@ -1,81 +1,99 @@
-import aesjs from "aes-js";
+import crypto from "crypto";
+import fetch from "node-fetch";
 
-// 256-bit key
-const key = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-  23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-];
+/**
+ * 
+ * @returns {string[]} an array of words
+ * @description gets the word list from the EFF website
+ */
+const getWordList = async () => {
+  const response = await fetch("https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt");
+  const text = await response.text();
+  const words = text.trim().split("\n").map((line) => line.split("\t")[1]);
+  words.splice(240);
+  return words;
+};
 
+/**
+ * 
+ * @param {string} lines
+ * @returns {string[]} an array of app names
+ */
+const getAppNames = (lines) => {
+  const appNames = [];
+  lines.forEach((line) => {
+    const [app] = line.split(" - ");
+    appNames.push(app.trim());
+  });
+
+  return appNames;
+};
+
+/**
+ * 
+ * @returns {string} a random password
+ * @description generates a random password using the Diceware method
+ * @see https://en.wikipedia.org/wiki/Diceware
+ * @see https://www.eff.org/dice
+ * @see https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+ */
 const generatePassword = () => {
-  // generate a random password between 8 and 16 characters, at least one number, one capital letter or one special character (e.g. !@#$%^&*)
-  const charset =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.!@#$%^&*_+=/?";
-  let password = "";
-  let length = Math.floor(Math.random() * 8) + 8;
-
-  while (length--) {
-    password += charset[Math.floor(Math.random() * charset.length)];
-
-    if (length === 0) {
-      if (!password.match(/[A-Z]/)) {
-        password += charset[Math.floor(Math.random() * 26) + 26];
-      } else if (!password.match(/[0-9]/)) {
-        password += charset[Math.floor(Math.random() * 10) + 52];
-      } else if (!password.match(/[-.!@#$%^&*_+=/?]/)) {
-        password += charset[Math.floor(Math.random() * 16) + 62];
-      }
-    }
-
-    // shuffle the password
-    password = password
-      .split("")
-      .sort(() => Math.random() - 0.5)
-      .join("");
+  const wordList = getWordList();
+  console.log('wordList: ' + wordList.length)
+  const password = [];
+  for (let i = 0; i < 6; i++) {
+    const index = crypto.randomInt(0, wordList.length);
+    console.log('index' + index);
+    password.push(wordList[index]);
   }
 
-  return password;
+  return password.join("-");
 };
 
+/**
+ * 
+ * @param {string} password
+ * @returns {object} an object with the encrypted password, key, and iv
+ * @description encrypts a password using the crypto module
+ * @see https://nodejs.org/api/crypto.html#crypto_crypto_createcipheriv_algorithm_key_iv_options
+ * 
+ * @example
+ * const encryptedPassword = encryptPassword("correct-horse-battery-staple");
+ * console.log(encryptedPassword); // "c89a391d7f44d3cf87"
+*/
 const encryptPassword = (password) => {
-  const textBytes = aesjs.utils.utf8.toBytes(password);
-  const aesCtr = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(5));
-  const encryptedBytes = aesCtr.encrypt(textBytes);
-  const encryptedHex = aesjs.utils.hex.fromBytes(encryptedBytes);
+  const key = crypto.randomBytes(32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
 
-  return encryptedHex;
+  const encrypted = cipher.update(password);
+  const finalBuffer = Buffer.concat([encrypted, cipher.final()]);
+  const encryptedPassword = finalBuffer.toString("hex");
+
+  return { encryptedPassword, key, iv };
 };
 
-const decryptPassword = (password) => {
-  const encryptedBytes = aesjs.utils.hex.toBytes(password);
-  const aesCtr = new aesjs.ModeOfOperation.ctr(key, new aesjs.Counter(5));
-  const decryptedBytes = aesCtr.decrypt(encryptedBytes);
-  const decryptedText = aesjs.utils.utf8.fromBytes(decryptedBytes);
+/**
+ * 
+ * @param {string} encryptedPassword
+ * @param {Buffer} [key]
+ * @param {Buffer} [iv]
+ * @returns {string} a decrypted password
+ * @description decrypts a password using the crypto module
+ * 
+ * @example
+ * const decryptedPassword = decryptPassword("c89a391d7f44d3cf87", key, iv);
+ * console.log(decryptedPassword); // "correct-horse-battery-staple"
+*/
+const decryptPassword = (encryptedPassword, key, iv) => {
+  const encryptedBuffer = Buffer.from(encryptedPassword, "hex");
+  const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
 
-  return decryptedText;
+  const decrypted = decipher.update(encryptedBuffer);
+  const finalBuffer = Buffer.concat([decrypted, decipher.final()]);
+  const decryptedPassword = finalBuffer.toString();
+
+  return decryptedPassword;
 };
 
-// function writeToFile(path, data) {
-//   return new Promise((resolve, reject) => {
-//     fs.writeFile(path, data, (err) => {
-//       if (err) {
-//         reject(err);
-//       } else {
-//         resolve();
-//       }
-//     });
-//   });
-// }
-
-// const readFromFile = (path) => {
-//   return new Promise((resolve, reject) => {
-//     fs.readFile(path, "utf8", (err, data) => {
-//       if (err) {
-//         reject(err);
-//       } else {
-//         resolve(data);
-//       }
-//     });
-//   });
-// };
-
-export { generatePassword, encryptPassword, decryptPassword };
+export { generatePassword, encryptPassword, decryptPassword, getWordList, getAppNames };
