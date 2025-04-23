@@ -56,6 +56,8 @@ On first launch, you'll be prompted to create a master password. Choose a strong
 
 ### Main Menu Options
 
+![image](https://github.com/user-attachments/assets/fcc705d1-f8d2-41ee-a534-997126de3528)
+
 - **Add Password**: Store credentials for a new application or website
 - **View Password**: Access your stored credentials
 - **Delete Password**: Remove stored credentials
@@ -67,6 +69,8 @@ On first launch, you'll be prompted to create a master password. Choose a strong
 - **Exit**: Close the application
 
 ### Managing Passwords
+
+![image](https://github.com/user-attachments/assets/894db961-1744-4a46-ad26-f9205d4e52a8)
 
 When adding or updating passwords, you can either:
 - Provide your own password
