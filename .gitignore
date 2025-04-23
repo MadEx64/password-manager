@@ -1,4 +1,32 @@
+# Dependencies
 node_modules
-passwords.txt
-masterPassword.txt
-```
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+
+# Password manager data files
+passwords
+passwords.bak
+.masterPassword
+.masterPassword.bak
+.recovery_salt
+.recovery_salt.bak
+.lock
+
+# Backups
+backups/
+
+# Cursor
+.cursor/
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# OS specific files
+.DS_Store
+Thumbs.db
