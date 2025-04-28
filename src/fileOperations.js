@@ -15,9 +15,9 @@ const readdirAsync = promisify(fs.readdir);
 
 const BASE_DIR = process.cwd();
 const BACKUP_DIR = join(BASE_DIR, "backups");
-
-// Update the PATHS constant to include BACKUP_DIR
-PATHS.BACKUP_DIR = BACKUP_DIR;
+const NEWLINE = "\n";
+const FILE_LOCK_TIMEOUT = 30000;
+const CHARSET = 'utf-8';
 
 // Flag to control file encryption
 export const FILE_ENCRYPTION_ENABLED = true;
@@ -44,72 +44,95 @@ export const createPasswordsFile = async () => {
 };
 
 /**
+ * Parses the lines from the passwords file
+ * @param {string} lines - The lines from the passwords file (e.g. 'TestApp - test@example.com - encryptedPass')
+ * @returns {string[]} An array of parsed lines
+ */
+function parseLines(lines) {
+  if (lines.trim() === "") return [];
+  return lines.split(/\r?\n/).filter((line) => line.trim() !== "");
+}
+
+/**
+ * Reads the encrypted lines from the passwords file
+ * @param {Buffer} fileBuffer - The buffer of the passwords file
+ * @returns {Promise<string[]>} An array of decrypted lines
+ * @throws {PasswordManagerError} If the passwords file is not found or decryption fails
+ */
+async function readEncryptedLines(fileBuffer) {
+  const encryptedMasterPassword = await readMasterPasswordRaw();
+  if (!encryptedMasterPassword) {
+    throw new PasswordManagerError(
+      "Master password not found for file decryption",
+      ERROR_CODES.AUTHENTICATION_FAILED
+    );
+  }
+
+  try {
+    const decryptedData = decryptFile(fileBuffer, encryptedMasterPassword);
+    return parseLines(decryptedData);
+  } catch (decryptError) {
+    // Attempt to restore from backup if decryption fails
+    return await tryRestoreFromBackup(
+      encryptedMasterPassword,
+      decryptError
+    );
+  }
+}
+
+/**
+ * Attempts to restore the passwords file from a backup if decryption fails
+ * @param {string} encryptedMasterPassword - The encrypted master password
+ * @param {Error} decryptError - The error that occurred during decryption
+ * @returns {Promise<string[]>} An array of decrypted lines
+ * @throws {PasswordManagerError} If the backup decryption fails
+ */
+async function tryRestoreFromBackup(encryptedMasterPassword, decryptError) {
+  if (fs.existsSync(PATHS.PASSWORDS_BACKUP)) {
+    console.log(chalk.yellow("Primary password file corrupted, attempting to restore from backup..."));
+    const backupBuffer = await fs.promises.readFile(PATHS.PASSWORDS_BACKUP);
+
+    try {
+      const decryptedBackup = decryptFile(backupBuffer, encryptedMasterPassword);
+      await fs.promises.writeFile(PATHS.PASSWORDS, backupBuffer);
+      console.log(chalk.green("Successfully restored from backup!"));
+      return parseLines(decryptedBackup);
+    } catch (backupDecryptError) {
+      throw new PasswordManagerError(
+        "Failed to decrypt password file and backup: " + backupDecryptError.message,
+        ERROR_CODES.DECRYPTION_FAILED
+      );
+    }
+  } else {
+    throw new PasswordManagerError(
+      "Failed to decrypt password file: " + decryptError.message,
+      ERROR_CODES.DECRYPTION_FAILED
+    );
+  }
+}
+
+/**
  * Reads the lines from the passwords file
- * @returns {Promise<string[]>} Lines from the passwords file (e.g. ['TestApp - test@example.com - encryptedPass'])
+ * @returns {Promise<string[]>} Lines from the passwords file
  * @throws {PasswordManagerError} If the passwords file is not found
  */
 export const readLines = async () => {
-  try {
+   try {
     if (!fs.existsSync(PATHS.PASSWORDS)) {
       return [];
     }
-    
     // Read the file as a buffer first to detect if it's encrypted
     const fileBuffer = await fs.promises.readFile(PATHS.PASSWORDS);
-    
-    let data;
-    
-    // Check if the file is encrypted with our file encryption format
+
     if (FILE_ENCRYPTION_ENABLED && isFileEncrypted(fileBuffer)) {
-      // Get master password for decryption
-      const encryptedMasterPassword = await readMasterPasswordRaw();
-      if (!encryptedMasterPassword) {
-        throw new PasswordManagerError(
-          "Master password not found for file decryption",
-          ERROR_CODES.AUTHENTICATION_FAILED
-        );
-      }
-      
-      // For decryption, we need the real master password, not the encrypted one
-      // This is directly taken from the master password file
-      try {
-        data = decryptFile(fileBuffer, encryptedMasterPassword);
-      } catch (decryptError) {
-        // Try to restore from backup if decryption fails
-        if (fs.existsSync(PATHS.PASSWORDS_BACKUP)) {
-          console.log(chalk.yellow("Primary password file corrupted, attempting to restore from backup..."));
-          const backupBuffer = await fs.promises.readFile(PATHS.PASSWORDS_BACKUP);
-          
-          try {
-            data = decryptFile(backupBuffer, encryptedMasterPassword);
-            // If successful, restore the backup to the main file
-            await fs.promises.writeFile(PATHS.PASSWORDS, backupBuffer);
-            console.log(chalk.green("Successfully restored from backup!"));
-          } catch (backupDecryptError) {
-            throw new PasswordManagerError(
-              "Failed to decrypt password file and backup: " + backupDecryptError.message,
-              ERROR_CODES.DECRYPTION_FAILED
-            );
-          }
-        } else {
-          throw new PasswordManagerError(
-            "Failed to decrypt password file: " + decryptError.message,
-            ERROR_CODES.DECRYPTION_FAILED
-          );
-        }
-      }
+      return await readEncryptedLines(fileBuffer);
     } else {
       // Traditional plaintext file format
-      data = fileBuffer.toString('utf8');
+      const data = fileBuffer.toString(CHARSET);
+      return parseLines(data);
     }
-    
-    if (data.trim() === "") {
-      return [];
-    }
-    
-    // Return the lines from the passwords file ([ 'TestApp - test@example.com - encryptedPass', 'TestApp2 - test2@example.com - encryptedPass2' ])
-    return data.split(/\r?\n/).filter((line) => line.trim() !== "");
-  } catch (error) {
+  }
+  catch (error) {
     if (error instanceof PasswordManagerError) {
       throw error;
     }
@@ -134,7 +157,7 @@ export const writeLine = async (line) => {
       await renameAsync(PATHS.PASSWORDS, PATHS.PASSWORDS_BACKUP);
     }
 
-    await writeFileAsync(PATHS.PASSWORDS, line + "\n");
+    await writeFileAsync(PATHS.PASSWORDS, line + NEWLINE);
   } catch (error) {
     handleError(error);
     throw new PasswordManagerError(
@@ -157,7 +180,7 @@ export const writeLines = async (lines) => {
     }
 
     // Create the content string with newlines
-    const content = lines.join("\n") + "\n";
+    const content = lines.join(NEWLINE) + NEWLINE;
     
     if (FILE_ENCRYPTION_ENABLED) {
       // Get master password for encryption
@@ -266,21 +289,21 @@ export const readMasterPassword = async () => {
       }
     } else {
       // Traditional plaintext file format
-      data = fileBuffer.toString('utf8');
+      data = fileBuffer.toString(CHARSET);
     }
     
     // Check if data contains a newline (indicating new format with checksum)
-    if (data.includes("\n")) {
-      const [password, checksum] = data.split("\n");
+    if (data.includes(NEWLINE)) {
+      const [password, checksum] = data.split(NEWLINE);
 
       if (!verifyChecksum(password, checksum)) {
         // Try to restore from backup
         if (fs.existsSync(PATHS.MASTER_PASSWORD_BACKUP)) {
           const backupData = await readFileAsync(
             PATHS.MASTER_PASSWORD_BACKUP,
-            "utf8"
+            CHARSET
           );
-          const [backupPassword, backupChecksum] = backupData.split("\n");
+          const [backupPassword, backupChecksum] = backupData.split(NEWLINE);
 
           if (verifyChecksum(backupPassword, backupChecksum)) {
             await writeFileAsync(PATHS.MASTER_PASSWORD, backupData);
@@ -340,7 +363,7 @@ export const writeMasterPassword = async (password) => {
 
     // Generate the content with checksum
     const checksum = createChecksum(password);
-    const content = `${password}\n${checksum}`;
+    const content = `${password}${NEWLINE}${checksum}`;
     
     if (FILE_ENCRYPTION_ENABLED) {
       // Get the recovery key for encryption
@@ -449,11 +472,12 @@ const acquireLock = async (maxRetries = FILE_LOCK.MAX_RETRIES) => {
   // First check if lock is stale and clear it if needed
   try {
     if (fs.existsSync(FILE_LOCK.LOCK_FILE)) {
-      const lockContent = await readFileAsync(FILE_LOCK.LOCK_FILE, "utf8");
+      const lockContent = await readFileAsync(FILE_LOCK.LOCK_FILE, CHARSET);
       const lockTime = parseInt(lockContent, 10) || 0;
 
-      // If the lock is older than 30 seconds, consider it stale
-      if (Date.now() - lockTime > 30000) {
+      // If the lock is older than the defined timeout, consider it stale
+      if (Date.now() - lockTime > FILE_LOCK_TIMEOUT) {
+        console.log("Stale lock file detected, clearing...");
         try {
           fs.unlinkSync(FILE_LOCK.LOCK_FILE);
           console.log("Cleared stale lock file");
@@ -478,7 +502,7 @@ const acquireLock = async (maxRetries = FILE_LOCK.MAX_RETRIES) => {
         await writeFileAsync(FILE_LOCK.LOCK_FILE, timestamp);
 
         // Verify the lock was created successfully
-        const lockContent = await readFileAsync(FILE_LOCK.LOCK_FILE, "utf8");
+        const lockContent = await readFileAsync(FILE_LOCK.LOCK_FILE, CHARSET);
         if (lockContent === timestamp) {
           return true;
         }
@@ -580,7 +604,7 @@ export const createBackup = async (
       lockAcquired = true;
     }
 
-    const data = await readFileAsync(PATHS.PASSWORDS, "utf8");
+    const data = await readFileAsync(PATHS.PASSWORDS, CHARSET);
 
     if (encrypt) {
       let masterPassword;
@@ -594,10 +618,10 @@ export const createBackup = async (
           if (fs.existsSync(PATHS.MASTER_PASSWORD)) {
             const passwordData = await readFileAsync(
               PATHS.MASTER_PASSWORD,
-              "utf8"
+              CHARSET
             );
             // Extract just the password part (before newline)
-            masterPassword = passwordData.split("\n")[0];
+            masterPassword = passwordData.split(NEWLINE)[0];
           } else {
             masterPassword = "";
           }
@@ -635,7 +659,7 @@ export const createBackup = async (
       const cipher = crypto.createCipheriv("aes-256-cbc", encryptionKey, iv);
 
       let encryptedData = cipher.update(
-        Buffer.from(metadata + "\n" + data, "utf8")
+        Buffer.from(metadata + NEWLINE + data, CHARSET)
       );
       encryptedData = Buffer.concat([encryptedData, cipher.final()]);
 
@@ -693,7 +717,7 @@ export const restoreBackup = async (
     // Encrypted backups will have the IV at the beginning (16 bytes)
     const isEncrypted =
       backupData.length > 16 &&
-      !backupData.toString("utf8", 0, 5).match(/^[A-Za-z]/);
+      !backupData.toString(CHARSET, 0, 5).match(/^[A-Za-z]/);
 
     let dataToRestore;
 
@@ -708,7 +732,7 @@ export const restoreBackup = async (
           if (fs.existsSync(PATHS.MASTER_PASSWORD)) {
             const passwordData = await readFileAsync(
               PATHS.MASTER_PASSWORD,
-              "utf8"
+              CHARSET
             );
             masterPassword = passwordData.split("\n")[0];
           } else {
@@ -748,8 +772,8 @@ export const restoreBackup = async (
         let decryptedData = decipher.update(encryptedData);
         decryptedData = Buffer.concat([decryptedData, decipher.final()]);
 
-        const decryptedStr = decryptedData.toString("utf8");
-        const [metadataStr, ...dataParts] = decryptedStr.split("\n");
+        const decryptedStr = decryptedData.toString(CHARSET);
+        const [metadataStr, ...dataParts] = decryptedStr.split(NEWLINE);
 
         const metadata = JSON.parse(metadataStr);
 
@@ -757,7 +781,7 @@ export const restoreBackup = async (
           throw new Error("Invalid backup metadata");
         }
 
-        dataToRestore = dataParts.join("\n");
+        dataToRestore = dataParts.join(NEWLINE);
 
         const dataChecksum = createChecksum(dataToRestore);
         if (dataChecksum !== metadata.checksum) {
@@ -771,7 +795,7 @@ export const restoreBackup = async (
       }
     } else {
       // Not encrypted or old format, just use as-is
-      dataToRestore = backupData.toString("utf8");
+      dataToRestore = backupData.toString(CHARSET);
     }
 
     // Only acquire a lock now that we have done the expensive decryption work
@@ -792,7 +816,7 @@ export const restoreBackup = async (
     await releaseLock();
     lockAcquired = false;
 
-    console.log(chalk.green("✓ Backup restored successfully!\n"));
+    console.log(chalk.green("✓ Backup restored successfully!" + NEWLINE));
     return true;
   } catch (error) {
     if (lockAcquired) {
@@ -868,7 +892,7 @@ export const deleteBackup = async (backupPath) => {
     }
     
     fs.unlinkSync(backupPath);
-    console.log(chalk.green(`✓ Backup deleted successfully!\n`));
+    console.log(chalk.green(`✓ Backup deleted successfully!` + NEWLINE));
     return true;
   } catch (error) {
     // Handle errors
@@ -894,20 +918,20 @@ async function readMasterPasswordRaw() {
       return "";
     }
     
-    const data = await readFileAsync(PATHS.MASTER_PASSWORD, "utf8");
+    const data = await readFileAsync(PATHS.MASTER_PASSWORD, CHARSET);
     
     // Check if data contains a newline (indicating new format with checksum)
-    if (data.includes("\n")) {
-      const [password, checksum] = data.split("\n");
+    if (data.includes(NEWLINE)) {
+      const [password, checksum] = data.split(NEWLINE);
       
       if (!verifyChecksum(password, checksum)) {
         // Try to restore from backup
         if (fs.existsSync(PATHS.MASTER_PASSWORD_BACKUP)) {
           const backupData = await readFileAsync(
             PATHS.MASTER_PASSWORD_BACKUP,
-            "utf8"
+            CHARSET
           );
-          const [backupPassword, backupChecksum] = backupData.split("\n");
+          const [backupPassword, backupChecksum] = backupData.split(NEWLINE);
           
           if (verifyChecksum(backupPassword, backupChecksum)) {
             await writeFileAsync(PATHS.MASTER_PASSWORD, backupData);
