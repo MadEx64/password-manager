@@ -14,6 +14,8 @@ import {
   createBackupPassword,
   restoreBackupPassword,
   deleteBackupPassword,
+  handleExportPasswords,
+  handleImportPasswords,
 } from "./src/passwordManager.js";
 import { createPasswordsFile, readLines } from "./src/fileOperations.js";
 import { handleError } from "./src/errorHandler.js";
@@ -59,6 +61,8 @@ const managePasswords = async () => {
             "Create backup",
             "Restore backup",
             "Delete backup",
+            "Export passwords",
+            "Import passwords",
             "Exit",
           ],
         },
@@ -136,6 +140,34 @@ const managePasswords = async () => {
             break;
           }
           break;
+        case "Export passwords": {
+          const { format } = await inquirer.prompt([
+            {
+              type: "list",
+              name: "format",
+              message: "Choose export format:",
+              choices: ["JSON", "CSV", "Cancel"],
+            },
+          ]);
+          result = await handleExportPasswords(format, lines);
+          break;
+        }
+        case "Import passwords": {
+          const { format } = await inquirer.prompt([
+            {
+              type: "list",
+              name: "format",
+              message: "Choose import format:",
+              choices: ["JSON", "CSV", "Cancel"],
+            },
+          ]);
+          result = await handleImportPasswords(format, lines);
+          if (result === true) {
+            const updatedLines = await readLines();
+            lines.splice(0, lines.length, ...updatedLines);
+          }
+          break;
+        }
         case "Exit":
           console.log(chalk.green("Exiting..."));
           return;
