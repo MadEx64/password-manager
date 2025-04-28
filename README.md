@@ -10,6 +10,7 @@ A robust command-line password manager that securely stores your credentials loc
 - **Password Generation**: Option to generate strong random passwords with customizable length and complexity
 - **Session Management**: Time-limited authentication sessions to balance security and convenience
 - **Backup & Restore**: Create and restore encrypted backups of your password database
+- **Import/Export**: Import and export passwords in CSV/JSON file format for easy migration
 - **Emergency Recovery**: Specialized tool to recover access in case of file corruption or issues
 - **Navigation System**: Intuitive navigation with options to continue, go back, or return to the main menu
 - **Search Functionality**: Quickly find stored credentials by searching for apps/websites or identifiers
@@ -66,6 +67,9 @@ On first launch, you'll be prompted to create a master password. Choose a strong
 - **Update Master Password**: Change your master password
 - **Create Backup**: Generate an encrypted backup of your password database
 - **Restore Backup**: Restore from a previously created backup
+- **Delete Backup**: Remove old backup files
+- **Import Passwords**: Import credentials from a CSV/JSON file
+- **Export Passwords**: Export your stored credentials to a CSV/JSON file
 - **Exit**: Close the application
 
 ### Managing Passwords
@@ -94,6 +98,7 @@ At key points in each operation, you'll be presented with navigation options:
 - Don't share your master password with anyone
 - Ensure your system is free from malware and keyloggers
 - Consider backing up your encrypted database to another secure location
+- Regularly update your master password and stored credentials
 
 ## Emergency Recovery Tool
 
