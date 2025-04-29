@@ -6,7 +6,7 @@ import {
   createBackup,
   restoreBackup,
   listBackups,
-  deleteBackup
+  deleteBackup,
 } from "./fileOperations.js";
 import {
   generateRandomPassword,
@@ -26,7 +26,8 @@ import inquirer from "inquirer";
 import clipboard from "clipboardy";
 import ora from "ora";
 import fs from "fs";
-import { promptNavigation, handleNavigation, NavigationAction } from "./navigation.js";
+import os from "os";
+import { promptNavigation, NavigationAction } from "./navigation.js";
 
 // Chalk variables
 import chalk from "chalk";
@@ -39,230 +40,265 @@ const red = chalk.red;
 
 /**
  * Adds a password to the password manager
- * @returns {Promise<boolean|string>} True if the password was added successfully, 
+ * @returns {Promise<boolean|string>} True if the password was added successfully,
  * false otherwise, or a NavigationAction if navigation was requested
  */
 export const addPassword = async (lines) => {
-  try {
-    // Validate the master password before proceeding
-    if (!(await validateMasterPassword())) {
+  while (true) {
+    try {
+      // Validate the master password before proceeding
+      if (!(await validateMasterPassword())) {
+        return false;
+      }
+
+      // First prompt for the application name separately
+      const { name } = await inquirer.prompt([
+        {
+          type: "input",
+          name: "name",
+          message: "Enter the name of the site or application:",
+          validate: (value) => validateInput(value, "application name"),
+          filter: (value) =>
+            value.trim().charAt(0).toUpperCase() + value.slice(1),
+        },
+      ]);
+
+      // Then prompt for the rest of the information
+      const answers = await inquirer.prompt([
+        {
+          type: "input",
+          name: "identifier",
+          message: "Enter the identifier (e.g., email address, username):",
+          validate: (value) => {
+            if (value.trim() === "") {
+              return "Identifier cannot be empty. Please enter a valid identifier.";
+            }
+            if (
+              lines.some((line) => {
+                const [app, identifier] = line.split(" - ");
+                return app === name && identifier === value.trim();
+              })
+            ) {
+              return "Identifier already exists. Please try again with a different identifier.";
+            }
+            return true;
+          },
+          filter: (value) => value.trim(),
+        },
+        {
+          type: "confirm",
+          name: "generatePassword",
+          message: "Would you like to generate a random password?",
+          default: true,
+        },
+        {
+          type: "confirm",
+          name: "customLength",
+          message: "Would you like to specify the password length?",
+          default: false,
+          when: (answers) => answers.generatePassword,
+        },
+        {
+          type: "number",
+          name: "passwordLength",
+          message: "Enter desired password length (minimum 8):",
+          default: 12,
+          when: (answers) => answers.generatePassword && answers.customLength,
+          validate: (value) => {
+            if (isNaN(value) || !Number.isInteger(value) || value < 8) {
+              return "Please enter a valid integer of at least 8";
+            }
+            return true;
+          },
+        },
+        {
+          type: "password",
+          name: "userPassword",
+          message: "Enter your password:",
+          when: (answers) => !answers.generatePassword,
+          validate: (value) => validatePassword(value),
+          mask: "*",
+        },
+        {
+          type: "password",
+          name: "confirmPassword",
+          message: "Confirm your password:",
+          mask: "*",
+          when: (answers) => !answers.generatePassword,
+          validate: (value, answers) =>
+            checkPasswordMatch(value, answers.userPassword),
+        },
+      ]);
+
+      // Add navigation prompt here after all password information has been collected
+      const navigationAction = await promptNavigation();
+      if (navigationAction === NavigationAction.GO_BACK) {
+        continue; // Let the user select an app and identifier again
+      } else if (navigationAction === NavigationAction.MAIN_MENU) {
+        clearSession();
+        return NavigationAction.MAIN_MENU;
+      }
+
+      const password = answers.generatePassword
+        ? generateRandomPassword(answers.passwordLength || 12)
+        : answers.userPassword;
+
+      const encryptedPassword = encryptPassword(password);
+      const lastLine = `${name} - ${answers.identifier} - ${encryptedPassword}`;
+      lines.push(lastLine);
+      const sortedLines = sortLines(lines);
+      await writeLines(sortedLines);
+
+      if (answers.generatePassword) {
+        log(yellow(`Generated password: ${password}`));
+      }
+
+      log(green("✓ Password added successfully!\n"));
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Prompts user for another potential password
+      const { addAnother } = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "addAnother",
+          message: "Would you like to add another password?",
+          default: false,
+        },
+      ]);
+      if (!addAnother) {
+        clearSession();
+        return true;
+      }
+
+      // If the user chooses to add another password, the loop continues
+      continue;
+    } catch (error) {
+      handleError(error);
       return false;
     }
-
-    // TODO: fix Spinner not allowing prompt to be shown
-    // const spinner = ora("Adding password...").start();
-
-    // First prompt for the application name separately
-    const { name } = await inquirer.prompt([
-      {
-        type: "input",
-        name: "name",
-        message: "Enter the name of the site or application:",
-        validate: (value) => validateInput(value, "application name"),
-        filter: (value) =>
-          value.trim().charAt(0).toUpperCase() + value.slice(1),
-      },
-    ]);
-
-    // Then prompt for the rest of the information
-    const answers = await inquirer.prompt([
-      {
-        type: "input",
-        name: "identifier",
-        message: "Enter the identifier (e.g., email address, username):",
-        validate: (value) => {
-          // Check if identifier is valid (not empty), and is not already in the lines array with the same application name
-          if (value.trim() === "") {
-            return "Identifier cannot be empty. Please enter a valid identifier.";
-          }
-          if (lines.some((line) => line.includes(value) && line.startsWith(name))) {
-            return "Identifier already exists. Please try again with a different identifier.";
-          }
-          return true;
-        },
-        filter: (value) => value.trim(),
-      },
-      {
-        type: "confirm",
-        name: "generatePassword",
-        message: "Would you like to generate a random password?",
-        default: true,
-      },
-      {
-        type: "confirm",
-        name: "customLength",
-        message: "Would you like to specify the password length?",
-        default: false,
-        when: (answers) => answers.generatePassword,
-      },
-      {
-        type: "number",
-        name: "passwordLength",
-        message: "Enter desired password length (minimum 8):",
-        default: 12,
-        when: (answers) => answers.generatePassword && answers.customLength,
-        validate: (value) => {
-          if (isNaN(value) || !Number.isInteger(value) || value < 8) {
-            return "Please enter a valid integer of at least 8";
-          }
-          return true;
-        },
-      },
-      {
-        type: "password",
-        name: "userPassword",
-        message: "Enter your password:",
-        when: (answers) => !answers.generatePassword,
-        validate: (value) => validatePassword(value),
-        mask: "*",
-      },
-      {
-        type: "password",
-        name: "confirmPassword",
-        message: "Confirm your password:",
-        mask: "*",
-        when: (answers) => !answers.generatePassword,
-        validate: (value, answers) =>
-          checkPasswordMatch(value, answers.userPassword),
-      },
-    ]);
-
-    // After user enters all application details, then prompt for navigation
-    const navigationAction = await promptNavigation();
-    if (navigationAction === NavigationAction.GO_BACK) {
-      return await addPassword(lines); // Let the user start over
-    } else if (navigationAction === NavigationAction.MAIN_MENU) {
-      clearSession();
-      return NavigationAction.MAIN_MENU;
-    }
-
-    const password = answers.generatePassword
-      ? generateRandomPassword(answers.passwordLength || 0)
-      : answers.userPassword;
-
-    const encryptedPassword = encryptPassword(password);
-    const lastLine = `${name} - ${answers.identifier} - ${encryptedPassword}`;
-    lines.push(lastLine);
-    const sortedLines = sortLines(lines);
-    await writeLines(sortedLines);
-
-    if (answers.generatePassword) {
-      log(yellow(`Generated password: ${password}`));
-    }
-
-    // spinner.succeed("Password added successfully!");
-    log(green("✓ Password added successfully!\n"));
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return true;
-  } catch (error) {
-    handleError(error);
-    return false;
   }
 };
 
 /**
  * Views a password from the password manager
- * @returns {Promise<boolean|string>} True if the password was viewed successfully, 
+ * @returns {Promise<boolean|string>} True if the password was viewed successfully,
  * false otherwise, or a NavigationAction if navigation was requested
  */
 export const viewPassword = async (lines) => {
-  try {
-    if (lines.length === 0) {
-      log(yellow("No passwords stored yet.\n"));
-      return false;
-    }
+  while (true) {
+    try {
+      if (lines.length === 0) {
+        log(yellow("No passwords stored yet.\n"));
+        return false;
+      }
 
-    // Validate the master password before proceeding
-    if (!(await validateMasterPassword())) {
-      return false;
-    }
+      // Validate the master password before proceeding
+      if (!(await validateMasterPassword())) {
+        return false;
+      }
 
-    const appNames = getAppNames(lines);
-    const appNamesWithIdentifiers = appNames.map((app) => {
-      const appPasswords = lines.filter((line) => line.startsWith(app));
-      const identifiers = appPasswords.map((line) => line.split(" - ")[1]);
-      return { app, identifiers };
-    });
+      const appNames = getAppNames(lines);
+      const appNamesWithIdentifiers = appNames.map((app) => {
+        const appPasswords = lines.filter((line) => line.startsWith(app));
+        const identifiers = appPasswords.map((line) => line.split(" - ")[1]);
+        return { app, identifiers };
+      });
 
-    const { selectedApp } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "selectedApp",
-        message: "Select an application:",
-        choices: appNames,
-      },
-    ]);
+      const { selectedApp } = await inquirer.prompt([
+        {
+          type: "list",
+          name: "selectedApp",
+          message: "Select an application:",
+          choices: appNames,
+        },
+      ]);
 
-    // Get the identifiers for the selected app from the appNamesWithIdentifiers array
-    const selectedAppIdentifiers = appNamesWithIdentifiers.find(
-      (app) => app.app === selectedApp
-    ).identifiers;
+      // Get the identifiers for the selected app from the appNamesWithIdentifiers array
+      const selectedAppIdentifiers = appNamesWithIdentifiers.find(
+        (app) => app.app === selectedApp
+      ).identifiers;
 
-    // Prompt the user to select an identifier from the selected app
-    const { selectedIdentifier } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "selectedIdentifier",
-        message: "Select an identifier:",
-        choices: selectedAppIdentifiers,
-      },
-    ]);
+      // Prompt the user to select an identifier from the selected app
+      const { selectedIdentifier } = await inquirer.prompt([
+        {
+          type: "list",
+          name: "selectedIdentifier",
+          message: "Select an identifier:",
+          choices: selectedAppIdentifiers,
+        },
+      ]);
 
-    // Only add navigation here after user has selected app and identifier
-    const navigationAction = await promptNavigation();
-    if (navigationAction === NavigationAction.GO_BACK) {
-      return await viewPassword(lines); // Let the user select an app and identifier again
-    } else if (navigationAction === NavigationAction.MAIN_MENU) {
-      clearSession();
-      return NavigationAction.MAIN_MENU;
-    }
+      // Only add navigation here after user has selected app and identifier
+      const navigationAction = await promptNavigation();
+      if (navigationAction === NavigationAction.GO_BACK) {
+        continue;
+      } else if (navigationAction === NavigationAction.MAIN_MENU) {
+        clearSession();
+        return NavigationAction.MAIN_MENU;
+      }
 
-    // Find the line that starts with the selected app and includes the selected identifier
-    const selectedLine = lines.find(
-      (line) =>
-        line.startsWith(selectedApp) && line.includes(selectedIdentifier)
-    );
-    if (!selectedLine) {
-      throw new PasswordManagerError(
-        "Selected application not found",
-        ERROR_CODES.FILE_NOT_FOUND
+      // Find the line that starts with the selected app and includes the selected identifier
+      const selectedLine = lines.find(
+        (line) =>
+          line.startsWith(selectedApp) && line.includes(selectedIdentifier)
       );
+      if (!selectedLine) {
+        throw new PasswordManagerError(
+          "Selected application not found",
+          ERROR_CODES.FILE_NOT_FOUND
+        );
+      }
+
+      // Split the line into app, identifier, and encrypted password
+      const [app, identifier, encryptedPassword] = selectedLine.split(" - ");
+      const decryptedPassword = decryptPassword(encryptedPassword);
+
+      // TODO: Consider using a more secure way to get the password
+      const { action } = await inquirer.prompt([
+        {
+          type: "list",
+          name: "action",
+          message: "What would you like to do?",
+          choices: ["Show Password", "Copy to Clipboard"],
+        },
+      ]);
+
+      if (action === "Show Password") {
+        log(underline(`\nApplication`), bold.green(app));
+        log(underline(`Identifier`), bold.green(identifier));
+        log(underline(`Password`), bold.green(decryptedPassword), "\n");
+      } else if (action === "Copy to Clipboard") {
+        clipboard.writeSync(decryptedPassword);
+        log(green("Password copied to clipboard!\n"));
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      const { viewAnother } = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "viewAnother",
+          message: "Would you like to view another password?",
+          default: false,
+        },
+      ]);
+      if (!viewAnother) {
+        clearSession();
+        return true;
+      }
+
+      continue;
+    } catch (error) {
+      handleError(error);
+      return false;
     }
-
-    // Split the line into app, identifier, and encrypted password
-    const [app, identifier, encryptedPassword] = selectedLine.split(" - ");
-    const decryptedPassword = decryptPassword(encryptedPassword);
-
-    const { action } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "action",
-        message: "What would you like to do?",
-        choices: ["Show Password", "Copy to Clipboard"],
-      },
-    ]);
-
-    if (action === "Show Password") {
-      log(underline(`\nApplication`), bold.green(app));
-      log(underline(`Identifier`), bold.green(identifier));
-      log(underline(`Password`), bold.green(decryptedPassword), "\n");
-    } else if (action === "Copy to Clipboard") {
-      clipboard.writeSync(decryptedPassword);
-      log(green("Password copied to clipboard!\n"));
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return true;
-  } catch (error) {
-    handleError(error);
-    return false;
   }
 };
 
 /**
  * Deletes a password from the password manager
- * @returns {Promise<boolean|string>} True if the password was deleted successfully, 
+ * @returns {Promise<boolean|string>} True if the password was deleted successfully,
  * false otherwise, or a NavigationAction if navigation was requested
  */
 export const deletePassword = async (lines) => {
@@ -344,7 +380,7 @@ export const deletePassword = async (lines) => {
 
 /**
  * Updates a password in the password manager
- * @returns {Promise<boolean|string>} True if the password was updated successfully, 
+ * @returns {Promise<boolean|string>} True if the password was updated successfully,
  * false otherwise, or a NavigationAction if navigation was requested
  * @throws {PasswordManagerError} If the application or identifier is not found
  */
@@ -426,14 +462,18 @@ export const updatePassword = async (lines) => {
         name: "customLength",
         message: "Would you like to specify the password length?",
         default: false,
-        when: (answers) => !answers.keepCurrentPassword && answers.generatePassword,
+        when: (answers) =>
+          !answers.keepCurrentPassword && answers.generatePassword,
       },
       {
         type: "number",
         name: "passwordLength",
         message: "Enter desired password length (minimum 8):",
         default: 12,
-        when: (answers) => !answers.keepCurrentPassword && answers.generatePassword && answers.customLength,
+        when: (answers) =>
+          !answers.keepCurrentPassword &&
+          answers.generatePassword &&
+          answers.customLength,
         validate: (value) => {
           if (isNaN(value) || !Number.isInteger(value) || value < 8) {
             return "Please enter a valid integer of at least 8";
@@ -522,7 +562,7 @@ export const updatePassword = async (lines) => {
 
 /**
  * Searches for a password in the password manager by prompting the user for a search query (e.g. application name or identifier)
- * @returns {Promise<boolean|string>} True if the password was searched successfully, 
+ * @returns {Promise<boolean|string>} True if the password was searched successfully,
  * false otherwise, or a NavigationAction if navigation was requested
  */
 export const searchPassword = async (lines) => {
@@ -562,7 +602,7 @@ export const searchPassword = async (lines) => {
 
 /**
  * Creates a backup of the passwords file
- * @returns {Promise<boolean|string>} Path to the backup file if successful, false otherwise, 
+ * @returns {Promise<boolean|string>} Path to the backup file if successful, false otherwise,
  * or a NavigationAction if navigation was requested
  */
 export const createBackupPassword = async () => {
@@ -582,18 +622,18 @@ export const createBackupPassword = async () => {
     }
 
     const spinner = ora("Creating backup...").start();
-    
+
     try {
       // Create the backup with the master password to avoid lock conflicts
       const backupPath = await createBackup(true, masterPassword);
-      
+
       if (!backupPath) {
         spinner.fail("No passwords to backup.");
         return false;
       }
-      
+
       spinner.succeed(`Backup created successfully at: ${backupPath}\n`);
-      
+
       clearSession();
       return backupPath;
     } catch (error) {
@@ -628,26 +668,28 @@ export const restoreBackupPassword = async () => {
     }
 
     const backupFiles = await listBackups();
-    
+
     if (backupFiles.length === 0) {
       log(yellow("No backup files found."));
       return false;
     }
 
     // Format backup filenames for display
-    const backupChoices = backupFiles.map(path => {
-      const filename = path.split('/').pop();
-      const stats = fs.statSync(path);
-      const date = new Date(stats.mtime).toLocaleString();
-      return {
-        name: `${filename} (${date})`,
-        value: path
-      };
-    });
+    const backupChoices = await Promise.all(
+      backupFiles.map(async (path) => {
+        const filename = path.split("/").pop();
+        const stats = await fs.promises.stat(path);
+        const date = new Date(stats.mtime).toLocaleString();
+        return {
+          name: `${filename} (${date})`,
+          value: path,
+        };
+      })
+    );
 
     backupChoices.push({
       name: "Cancel restoration",
-      value: "cancel"
+      value: "cancel",
     });
 
     const { selectedBackup } = await inquirer.prompt([
@@ -656,8 +698,8 @@ export const restoreBackupPassword = async () => {
         name: "selectedBackup",
         message: "Select a backup to restore:",
         choices: backupChoices,
-        pageSize: 10
-      }
+        pageSize: 10,
+      },
     ]);
 
     if (selectedBackup === "cancel") {
@@ -678,9 +720,10 @@ export const restoreBackupPassword = async () => {
       {
         type: "confirm",
         name: "confirmRestore",
-        message: "Are you sure you want to restore this backup? This will overwrite your current passwords.",
-        default: false
-      }
+        message:
+          "Are you sure you want to restore this backup? This will overwrite your current passwords.",
+        default: false,
+      },
     ]);
 
     if (!confirmRestore) {
@@ -689,11 +732,11 @@ export const restoreBackupPassword = async () => {
     }
 
     const spinner = ora("Restoring backup...").start();
-    
+
     try {
       // Restore the backup with the master password to avoid lock conflicts
       const success = await restoreBackup(selectedBackup, masterPassword);
-      
+
       if (success) {
         spinner.succeed("Backup restored successfully!\n");
         clearSession();
@@ -726,27 +769,27 @@ export const deleteBackupPassword = async () => {
 
     // Get available backups
     const backupFiles = await listBackups();
-    
+
     if (backupFiles.length === 0) {
       log(yellow("No backup files found."));
       return false;
     }
 
     // Format backup filenames for display
-    const backupChoices = backupFiles.map(path => {
-      const filename = path.split('/').pop();
+    const backupChoices = backupFiles.map((path) => {
+      const filename = path.split("/").pop();
       const stats = fs.statSync(path);
       const date = new Date(stats.mtime).toLocaleString();
       return {
         name: `${filename} (${date})`,
-        value: path
+        value: path,
       };
     });
 
     // Add cancel option
     backupChoices.push({
       name: "Cancel deletion",
-      value: "cancel"
+      value: "cancel",
     });
 
     // Ask user to select a backup
@@ -756,8 +799,8 @@ export const deleteBackupPassword = async () => {
         name: "selectedBackup",
         message: "Select a backup to delete:",
         choices: backupChoices,
-        pageSize: 10
-      }
+        pageSize: 10,
+      },
     ]);
 
     if (selectedBackup === "cancel") {
@@ -779,9 +822,10 @@ export const deleteBackupPassword = async () => {
       {
         type: "confirm",
         name: "confirmDelete",
-        message: "Are you sure you want to delete this backup? This action cannot be undone.",
-        default: false
-      }
+        message:
+          "Are you sure you want to delete this backup? This action cannot be undone.",
+        default: false,
+      },
     ]);
 
     if (!confirmDelete) {
@@ -790,11 +834,11 @@ export const deleteBackupPassword = async () => {
     }
 
     const spinner = ora("Deleting backup...").start();
-    
+
     try {
       // Delete the backup
       const success = await deleteBackup(selectedBackup);
-      
+
       if (success) {
         spinner.succeed("Backup deleted successfully!\n");
         clearSession();
@@ -831,26 +875,31 @@ export const exportPasswordsToJSON = async (lines) => {
       {
         type: "input",
         name: "exportPath",
-        message: "Enter the path to export passwords (e.g. ./passwords-export.json):",
+        message:
+          "Enter the path to export passwords (e.g. ./passwords-export.json):",
         default: "./passwords-export.json",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty."
-      }
+        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+      },
     ]);
-    const data = lines.map(line => {
+    const data = lines.map((line) => {
       const [app, identifier, encryptedPassword] = line.split(" - ");
       return {
         application: app,
         identifier,
-        password: decryptPassword(encryptedPassword)
+        password: decryptPassword(encryptedPassword),
       };
     });
     fs.writeFileSync(exportPath, JSON.stringify(data, null, 2), "utf8");
     log(green(`Passwords exported to ${exportPath}`));
-    log(yellow("Please make sure to protect this file as it contains sensitive information.\n"));
+    log(
+      yellow(
+        "Please make sure to protect this file as it contains sensitive information.\n"
+      )
+    );
     return true;
   } catch (error) {
     handleError(error);
-  
+
     return false;
   }
 };
@@ -869,10 +918,11 @@ export const importPasswordsFromJSON = async (lines) => {
       {
         type: "input",
         name: "importPath",
-        message: "Enter the path to import passwords from (e.g. ./passwords-export.json):",
+        message:
+          "Enter the path to import passwords from (e.g. ./passwords-export.json):",
         default: "./passwords-export.json",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty."
-      }
+        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+      },
     ]);
     if (!fs.existsSync(importPath)) {
       log(red("File does not exist."));
@@ -894,9 +944,17 @@ export const importPasswordsFromJSON = async (lines) => {
     for (const entry of importedData) {
       if (!entry.application || !entry.identifier || !entry.password) continue;
       // Check for duplicates
-      if (lines.some(line => line.startsWith(entry.application) && line.includes(` - ${entry.identifier} - `))) continue;
+      if (
+        lines.some((line) => {
+          const [app, identifier] = line.split(" - ");
+          return app === entry.application && identifier === entry.identifier;
+        })
+      )
+        continue;
       const encryptedPassword = encryptPassword(entry.password);
-      lines.push(`${entry.application} - ${entry.identifier} - ${encryptedPassword}`);
+      lines.push(
+        `${entry.application} - ${entry.identifier} - ${encryptedPassword}`
+      );
       imported++;
     }
     if (imported > 0) {
@@ -905,7 +963,11 @@ export const importPasswordsFromJSON = async (lines) => {
       log(green(`Imported ${imported} passwords from ${importPath}\n`));
       return true;
     } else {
-      log(yellow("No new passwords were imported (all were duplicates or invalid).\n"));
+      log(
+        yellow(
+          "No new passwords were imported (all were duplicates or invalid).\n"
+        )
+      );
       return false;
     }
   } catch (error) {
@@ -932,30 +994,37 @@ export const exportPasswordsToCSV = async (lines) => {
       {
         type: "input",
         name: "exportPath",
-        message: "Enter the path to export passwords (e.g. ./passwords-export.csv):",
+        message:
+          "Enter the path to export passwords (e.g. ./passwords-export.csv):",
         default: "./passwords-export.csv",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty."
-      }
+        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+      },
     ]);
-    const data = lines.map(line => {
+    const data = lines.map((line) => {
       const [app, identifier, encryptedPassword] = line.split(" - ");
       return {
         application: app,
         identifier,
-        password: decryptPassword(encryptedPassword)
+        password: decryptPassword(encryptedPassword),
       };
     });
-    
-    const csvContent = data.map(row => `${row.application},${row.identifier},${row.password}`).join("\n");
+
+    const csvContent = data
+      .map((row) => `${row.application},${row.identifier},${row.password}`)
+      .join("\n");
     fs.writeFileSync(exportPath, csvContent, "utf8");
     log(green(`Passwords exported to ${exportPath}`));
-    log(yellow("Please make sure to protect this file as it contains sensitive information.\n"));
+    log(
+      yellow(
+        "Please make sure to protect this file as it contains sensitive information.\n"
+      )
+    );
     return true;
   } catch (error) {
     handleError(error);
     return false;
   }
-}
+};
 /**
  * Imports passwords from a CSV file
  * @param {string[]} lines - The current password lines
@@ -970,23 +1039,32 @@ export const importPasswordsFromCSV = async (lines) => {
       {
         type: "input",
         name: "importPath",
-        message: "Enter the path to import passwords from (e.g. ./passwords-export.csv):",
+        message:
+          "Enter the path to import passwords from (e.g. ./passwords-export.csv):",
         default: "./passwords-export.csv",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty."
-      }
+        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+      },
     ]);
     if (!fs.existsSync(importPath)) {
       log(red("File does not exist."));
       return false;
     }
     const fileContent = fs.readFileSync(importPath, "utf8");
-    const linesArray = fileContent.split("\n").map(line => line.trim()).filter(line => line !== "");
+    const linesArray = fileContent
+      .split(os.EOL)
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
     let imported = 0;
     for (const line of linesArray) {
       const [app, identifier, password] = line.split(",");
       if (!app || !identifier || !password) continue;
       // Check for duplicates
-      if (lines.some(line => line.startsWith(app) && line.includes(` - ${identifier} - `))) continue;
+      if (
+        lines.some(
+          (line) => line.startsWith(app) && line.includes(` - ${identifier} - `)
+        )
+      )
+        continue;
       const encryptedPassword = encryptPassword(password);
       lines.push(`${app} - ${identifier} - ${encryptedPassword}`);
       imported++;
@@ -997,14 +1075,18 @@ export const importPasswordsFromCSV = async (lines) => {
       log(green(`Imported ${imported} passwords from ${importPath}\n`));
       return true;
     } else {
-      log(yellow("No new passwords were imported (all were duplicates or invalid).\n"));
+      log(
+        yellow(
+          "No new passwords were imported (all were duplicates or invalid).\n"
+        )
+      );
       return false;
     }
   } catch (error) {
     handleError(error);
     return false;
   }
-}
+};
 
 /**
  * Handles the export of passwords based on the selected format
@@ -1026,7 +1108,7 @@ export const handleExportPasswords = async (format, lines) => {
     handleError(error);
     return false;
   }
-}
+};
 /**
  * Handles the import of passwords based on the selected format
  * @param {string} format - The format to import from (JSON or CSV)
@@ -1039,10 +1121,12 @@ export const handleImportPasswords = async (format, lines) => {
       return await importPasswordsFromJSON(lines);
     } else if (format === "CSV") {
       return await importPasswordsFromCSV(lines);
+    } else {
+      log(yellow("Import cancelled.\n"));
+      return false;
     }
-    return false;
   } catch (error) {
     handleError(error);
     return false;
   }
-}
+};

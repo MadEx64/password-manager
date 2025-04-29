@@ -169,7 +169,7 @@ const managePasswords = async () => {
           break;
         }
         case "Exit":
-          console.log(chalk.green("Exiting..."));
+          console.log(chalk.yellow("Exiting..."));
           return;
       }
     }

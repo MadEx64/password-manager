@@ -28,7 +28,7 @@ export const promptNavigation = async () => {
       choices: [
         { name: "Continue with current operation", value: NavigationAction.CONTINUE },
         { name: "Go back to previous step", value: NavigationAction.GO_BACK },
-        { name: "Return to main menu", value: NavigationAction.MAIN_MENU }
+        { name: "Abort, return to main menu", value: NavigationAction.MAIN_MENU }
       ],
     },
   ]);
