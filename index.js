@@ -10,11 +10,9 @@ import {
   viewPassword,
   deletePassword,
   updatePassword,
-  searchPassword,
-  createBackupPassword,
-  restoreBackupPassword,
-  deleteBackupPassword
+  searchPassword
 } from "./src/passwordManager.js";
+import { createBackupPassword, restoreBackupPassword, deleteBackupPassword } from "./src/backupOperations.js";
 import { handleExportPasswords, handleImportPasswords } from "./src/exportImportOperations.js";
 import { createPasswordsFile, readLines } from "./src/fileOperations.js";
 import { handleError } from "./src/errorHandler.js";
