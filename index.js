@@ -13,10 +13,9 @@ import {
   searchPassword,
   createBackupPassword,
   restoreBackupPassword,
-  deleteBackupPassword,
-  handleExportPasswords,
-  handleImportPasswords,
+  deleteBackupPassword
 } from "./src/passwordManager.js";
+import { handleExportPasswords, handleImportPasswords } from "./src/exportImportOperations.js";
 import { createPasswordsFile, readLines } from "./src/fileOperations.js";
 import { handleError } from "./src/errorHandler.js";
 import { NavigationAction } from "./src/navigation.js";
