@@ -20,7 +20,6 @@ import { ERROR_CODES } from "./constants.js";
 import inquirer from "inquirer";
 import clipboard from "clipboardy";
 import ora from "ora";
-import fs from "fs";
 import { promptNavigation, NavigationAction } from "./navigation.js";
 
 // Chalk variables

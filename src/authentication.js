@@ -5,14 +5,12 @@ import { decryptPassword, encryptPassword } from "./utils.js";
 import {
   PasswordManagerError,
   validatePassword,
-  validateInput,
   handleError,
   checkPasswordMatch,
 } from "./errorHandler.js";
 import { ERROR_CODES } from "./constants.js";
 import {
   promptNavigation,
-  handleNavigation,
   NavigationAction,
 } from "./navigation.js";
 
