@@ -144,13 +144,22 @@ For additional safety, the system automatically creates backup copies of critica
 ### Project Structure
 
 - `index.js`: Main application entry point
-- `src/authentication.js`: Handles master password and user authentication
-- `src/constants.js`: Application-wide constants and configuration
-- `src/errorHandler.js`: Error handling and validation
-- `src/fileOperations.js`: File I/O operations for passwords and backups
-- `src/navigation.js`: Navigation system for the application
-- `src/passwordManager.js`: Core password management functions
-- `src/utils.js`: Utility functions including encryption/decryption
+- `src/`: Main source code directory
+  - `authentication.js`: Handles master password and user authentication
+  - `backupOperations.js`: Backup and restore operations for password files
+  - `constants.js`: Application-wide constants and configuration
+  - `errorHandler.js`: Error handling and validation
+  - `exportImportOperations.js`: Import/export logic for CSV/JSON files
+  - `fileOperations.js`: File I/O operations for passwords, master password, and backups
+  - `navigation.js`: Navigation system for the application
+  - `passwordManager.js`: Core password management functions (add, view, update, delete, search)
+  - `recovery.js`: Emergency recovery logic
+  - `utils.js`: Utility functions including encryption/decryption
+- `test_data/`: Temporary directory for test files (used during testing)
+- `tests/`: Automated test suites for all major modules
+  - `src/`: Test files for each source module (e.g., `fileOperations.test.js`, `authentication.test.js`)
+- `recovery-cli.js`: Emergency recovery CLI tool
+- `backups/`: Encrypted backup files of your password database
 
 ### Running Tests
 
