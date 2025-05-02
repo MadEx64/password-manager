@@ -258,13 +258,13 @@ export const viewPassword = async (lines) => {
       ]);
 
       if (action === "Show Password") {
+        const hiddenPassword = "*".repeat(decryptedPassword.length);
         log(underline(`\nApplication`), bold.green(app));
         log(underline(`Identifier`), bold.green(identifier));
-        log(underline(`Password`), bold.green(decryptedPassword), "\n");
-        
-        // Clear password after user has seen it and pressed any key
-        const spinner = ora("Press any key to clear the password...").start();
-        
+        process.stdout.write(underline(`Password`) + " " + bold.green(decryptedPassword));
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+        // Move cursor to start of line, clear line, and overwrite with hidden password
+        process.stdout.write("\r" + underline(`Password`) + " " + bold.green(hiddenPassword) + "\n\n");
       } else if (action === "Copy to Clipboard") {
         try {
           clipboard.writeSync(decryptedPassword);
