@@ -217,12 +217,11 @@ export const writeLines = async (lines) => {
  * @returns {Promise<string[]>} The rearranged lines
  */
 export const sortLines = (lines) => {
-  const sortedLines = lines.sort((a, b) => {
+  return lines.slice().sort((a, b) => {
     const appA = a.split(" - ")[0];
     const appB = b.split(" - ")[0];
     return appA.localeCompare(appB);
   });
-  return sortedLines;
 };
 
 /**
