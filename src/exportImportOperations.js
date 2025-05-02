@@ -3,7 +3,7 @@ import os from "os";
 import inquirer from "inquirer";
 import { encryptPassword, decryptPassword } from "./utils.js";
 import { validateMasterPassword } from "./authentication.js";
-import { handleError } from "./errorHandler.js";
+import { handleError, validateNonEmptyInput } from "./errorHandler.js";
 import { sortLines, writeLines } from "./fileOperations.js";
 
 // Chalk variables
@@ -12,6 +12,8 @@ const log = console.log;
 const green = chalk.green;
 const yellow = chalk.yellow;
 const red = chalk.red;
+
+const EXPECTED_FORMAT = "app - identifier - password";
 
 /**
  * Exports all passwords to a JSON file (decrypted)
@@ -23,10 +25,12 @@ export const exportPasswordsToJSON = async (lines) => {
     if (!(await validateMasterPassword())) {
       return false;
     }
+
     if (lines.length === 0) {
       log(yellow("No passwords to export.\n"));
       return false;
     }
+
     const { exportPath } = await inquirer.prompt([
       {
         type: "input",
@@ -34,24 +38,41 @@ export const exportPasswordsToJSON = async (lines) => {
         message:
           "Enter the path to export passwords (e.g. ./passwords-export.json):",
         default: "./passwords-export.json",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+        validate: (value) => validateNonEmptyInput(value),
       },
     ]);
+    
     const data = lines.map((line) => {
-      const [app, identifier, encryptedPassword] = line.split(" - ");
-      return {
-        application: app,
-        identifier,
-        password: decryptPassword(encryptedPassword),
-      };
-    });
-    fs.writeFileSync(exportPath, JSON.stringify(data, null, 2), "utf8");
+          const parts = line.split(" - ");
+          if (parts.length !== 3) {
+            throw new Error(`Invalid line format: "${line}". Expected format: "${EXPECTED_FORMAT}".`);
+          }
+          const [app, identifier, encryptedPassword] = parts;
+          let decryptedPassword;
+          try {
+            decryptedPassword = decryptPassword(encryptedPassword);
+          } catch (error) {
+            log(red(`Failed to decrypt password for "${app} - ${identifier}": ${error.message}`));
+            handleError(error);
+            return null; // Skip this entry if decryption fails
+          }
+          return {
+            application: app,
+            identifier,
+            password: decryptedPassword,
+          };
+        }).filter(entry => entry !== null); // Filter out any null entries
+
+    await fs.promises.writeFile(exportPath, JSON.stringify(data, null, 2), "utf8");
+
     log(green(`Passwords exported to ${exportPath}`));
     log(
       yellow(
         "Please make sure to protect this file as it contains sensitive information.\n"
       )
     );
+
+    log(green("Export completed successfully.\n"));
     return true;
   } catch (error) {
     handleError(error);
@@ -70,6 +91,7 @@ export const importPasswordsFromJSON = async (lines) => {
     if (!(await validateMasterPassword())) {
       return false;
     }
+
     const { importPath } = await inquirer.prompt([
       {
         type: "input",
@@ -81,39 +103,55 @@ export const importPasswordsFromJSON = async (lines) => {
       },
     ]);
 
-    if (!fs.existsSync(importPath)) {
-      log(red("File does not exist."));
+    let fileContent;
+    try {
+      fileContent = fs.readFileSync(importPath, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        log(red("File does not exist."));
+      } else {
+        log(red("An error occurred while reading the file."));
+      }
       return false;
     }
-    const fileContent = fs.readFileSync(importPath, "utf8");
     let importedData;
+
     try {
       importedData = JSON.parse(fileContent);
     } catch (e) {
-      log(red("Invalid JSON format."));
+      log(red(`Invalid JSON format: ${e.message}`));
       return false;
     }
+
     if (!Array.isArray(importedData)) {
       log(red("JSON must be an array of password objects."));
       return false;
     }
+
     let imported = 0;
+
+    // Create a Set for faster duplicate checks
+    const existingEntries = new Set(
+      lines.map((line) => {
+        const [app, identifier] = line.split(" - ");
+        return `${app}-${identifier}`;
+      })
+    );
+
     for (const entry of importedData) {
       if (!entry.application || !entry.identifier || !entry.password) continue;
-      // Check for duplicates
-      if (
-        lines.some((line) => {
-          const [app, identifier] = line.split(" - ");
-          return app === entry.application && identifier === entry.identifier;
-        })
-      )
-        continue;
+      // Check for duplicates using the Set
+      const entryKey = `${entry.application}-${entry.identifier}`;
+      if (existingEntries.has(entryKey)) continue;
+
       const encryptedPassword = encryptPassword(entry.password);
       lines.push(
         `${entry.application} - ${entry.identifier} - ${encryptedPassword}`
       );
+      existingEntries.add(entryKey); // Add to Set after adding to lines
       imported++;
     }
+
     if (imported > 0) {
       const sortedLines = sortLines(lines);
       await writeLines(sortedLines);
@@ -143,10 +181,12 @@ export const exportPasswordsToCSV = async (lines) => {
     if (!(await validateMasterPassword())) {
       return false;
     }
+
     if (lines.length === 0) {
       log(yellow("No passwords to export.\n"));
       return false;
     }
+
     const { exportPath } = await inquirer.prompt([
       {
         type: "input",
@@ -154,9 +194,10 @@ export const exportPasswordsToCSV = async (lines) => {
         message:
           "Enter the path to export passwords (e.g. ./passwords-export.csv):",
         default: "./passwords-export.csv",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+        validate: (value) => validateNonEmptyInput(value),
       },
     ]);
+    
     const data = lines.map((line) => {
       const [app, identifier, encryptedPassword] = line.split(" - ");
       return {
@@ -169,19 +210,24 @@ export const exportPasswordsToCSV = async (lines) => {
     const csvContent = data
       .map((row) => `${row.application},${row.identifier},${row.password}`)
       .join("\n");
-    fs.writeFileSync(exportPath, csvContent, "utf8");
+
+    await fs.promises.writeFile(exportPath, csvContent, "utf8");
+    
     log(green(`Passwords exported to ${exportPath}`));
     log(
       yellow(
         "Please make sure to protect this file as it contains sensitive information.\n"
       )
     );
+
+    log(green("Export completed successfully.\n"));
     return true;
   } catch (error) {
     handleError(error);
     return false;
   }
 };
+
 /**
  * Imports passwords from a CSV file
  * @param {string[]} lines - The current password lines
@@ -192,6 +238,7 @@ export const importPasswordsFromCSV = async (lines) => {
     if (!(await validateMasterPassword())) {
       return false;
     }
+    
     const { importPath } = await inquirer.prompt([
       {
         type: "input",
@@ -199,33 +246,48 @@ export const importPasswordsFromCSV = async (lines) => {
         message:
           "Enter the path to import passwords from (e.g. ./passwords-export.csv):",
         default: "./passwords-export.csv",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+        validate: (value) => validateNonEmptyInput(value),
       },
     ]);
-    if (!fs.existsSync(importPath)) {
-      log(red("File does not exist."));
+
+    let fileContent;
+    try {
+      fileContent = fs.readFileSync(importPath, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        log(red("File does not exist."));
+      } else {
+        log(red("An error occurred while reading the file."));
+      }
       return false;
     }
-    const fileContent = fs.readFileSync(importPath, "utf8");
+
     const linesArray = fileContent
       .split(os.EOL)
       .map((line) => line.trim())
       .filter((line) => line !== "");
     let imported = 0;
-    for (const line of linesArray) {
-      const [app, identifier, password] = line.split(",");
+
+    // Create a Set for faster duplicate checks
+    const existingEntries = new Set(
+      lines.map((line) => {
+        const [app, identifier] = line.split(" - ");
+        return `${app}-${identifier}`;
+      })
+    );
+
+    for (const csvLine of linesArray) {
+      const [app, identifier, password] = csvLine.split(",");
       if (!app || !identifier || !password) continue;
-      // Check for duplicates
-      if (
-        lines.some(
-          (line) => line.startsWith(app) && line.includes(` - ${identifier} - `)
-        )
-      )
-        continue;
+      // Check for duplicates using the Set
+      const entryKey = `${app}-${identifier}`;
+      if (existingEntries.has(entryKey)) continue;
       const encryptedPassword = encryptPassword(password);
       lines.push(`${app} - ${identifier} - ${encryptedPassword}`);
+      existingEntries.add(entryKey);
       imported++;
     }
+    
     if (imported > 0) {
       const sortedLines = sortLines(lines);
       await writeLines(sortedLines);
