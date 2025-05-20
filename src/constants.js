@@ -44,19 +44,31 @@ export const PATHS = {
  * @property {number} MIN_LENGTH - Minimum length of the password.
  * @property {number} MAX_LENGTH - Maximum length of the password.
  * @property {Object} REQUIRED_CHARS - Required characters in the password.
- * @property {RegExp} REQUIRED_CHARS.UPPERCASE - Uppercase letter.
- * @property {RegExp} REQUIRED_CHARS.LOWERCASE - Lowercase letter.
- * @property {RegExp} REQUIRED_CHARS.NUMBER - Number.
- * @property {RegExp} REQUIRED_CHARS.SPECIAL - Special character.
+ * @property {Object} REQUIRED_CHARS.UPPERCASE - Uppercase letter.
+ * @property {Object} REQUIRED_CHARS.LOWERCASE - Lowercase letter.
+ * @property {Object} REQUIRED_CHARS.NUMBER - Number.
+ * @property {Object} REQUIRED_CHARS.SPECIAL - Special character (e.g. -.!@#$%^&*_+=/?).
  */
 export const PASSWORD_STRENGTH = {
   MIN_LENGTH: 8,
   MAX_LENGTH: 16,
   REQUIRED_CHARS: {
-    UPPERCASE: /[A-Z]/,
-    LOWERCASE: /[a-z]/,
-    NUMBER: /[0-9]/,
-    SPECIAL: /[-.!@#$%^&*_+=/?]/
+    UPPERCASE: {
+      regex: /[A-Z]/,
+      description: "uppercase letter"
+    },
+    LOWERCASE: {
+      regex: /[a-z]/,
+      description: "lowercase letter"
+    },
+    NUMBER: {
+      regex: /[0-9]/,
+      description: "number"
+    },
+    SPECIAL: {
+      regex: /[-.!@#$%^&*_+=/?]/,
+      description: "special character"
+    }
   }
 };
 
