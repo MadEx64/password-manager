@@ -5,8 +5,8 @@ yarn-debug.log
 yarn-error.log
 
 # Password manager data files
-passwords
-passwords.bak
+.passwords
+.passwords.bak
 .masterPassword
 .masterPassword.bak
 .recovery_salt
@@ -14,10 +14,13 @@ passwords.bak
 .lock
 
 # Backups
-backups/
+.backups/
 
 # Cursor
 .cursor/
+
+# Test data
+test_data/
 
 # Environment variables
 .env
