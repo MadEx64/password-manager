@@ -20,6 +20,7 @@ A command-line password manager that stores your credentials locally with strong
 ```bash
 npm install
 npm start
+npm start -- --session-timeout 10 # Set session timeout to 10 minutes (default is 5 minutes)
 ```
 
 On first launch, set a master password. Use the menu to manage credentials.
