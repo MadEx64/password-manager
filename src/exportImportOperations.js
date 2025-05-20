@@ -1,35 +1,33 @@
 import fs from "fs";
 import os from "os";
 import inquirer from "inquirer";
-import { encryptPassword, decryptPassword } from "./utils.js";
-import { validateMasterPassword } from "./authentication.js";
-import { handleError, validateNonEmptyInput } from "./errorHandler.js";
-import { sortLines, writeLines } from "./fileOperations.js";
-
-// Chalk variables
-import chalk from "chalk";
-const log = console.log;
-const green = chalk.green;
-const yellow = chalk.yellow;
-const red = chalk.red;
-
-const EXPECTED_FORMAT = "app - identifier - password";
+import { authenticateUser } from "./auth/index.js";
+import { handleError } from "./errorHandler.js";
+import { NEWLINE } from "./constants.js";
+import validationTools from "./validation.js";
+import { readPasswordEntries, writePasswordEntries } from "./fileOperations/index.js";
+import { green, yellow, red, log } from "./logger.js";
 
 /**
- * Exports all passwords to a JSON file (decrypted)
- * @param {string[]} lines - The password lines to export
- * @returns {Promise<boolean>} True if export was successful, false otherwise
+ * Exports all passwords to a JSON file.
+ * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export const exportPasswordsToJSON = async (lines) => {
+export const exportPasswordsToJSON = async () => {
   try {
-    if (!(await validateMasterPassword())) {
+    if (!(await authenticateUser())) {
       return false;
     }
 
-    if (lines.length === 0) {
-      log(yellow("No passwords to export.\n"));
+    const entries = await readPasswordEntries();
+
+    if (entries.length === 0) {
+      log(yellow("No passwords to export." + NEWLINE));
       return false;
     }
+
+    const defaultExportPath = `${os.homedir()}/passwords-export-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
 
     const { exportPath } = await inquirer.prompt([
       {
@@ -37,60 +35,95 @@ export const exportPasswordsToJSON = async (lines) => {
         name: "exportPath",
         message:
           "Enter the path to export passwords (e.g. ./passwords-export.json):",
-        default: "./passwords-export.json",
-        validate: (value) => validateNonEmptyInput(value),
+        default: defaultExportPath,
+        validate: (value) => {
+          if (value.trim() === "") {
+            return "Path cannot be empty.";
+          }
+          if (!value.endsWith(".json")) {
+            return "File must have a .json extension.";
+          }
+          return true;
+        },
       },
     ]);
-    
-    const data = lines.map((line) => {
-          const parts = line.split(" - ");
-          if (parts.length !== 3) {
-            throw new Error(`Invalid line format: "${line}". Expected format: "${EXPECTED_FORMAT}".`);
-          }
-          const [app, identifier, encryptedPassword] = parts;
-          let decryptedPassword;
-          try {
-            decryptedPassword = decryptPassword(encryptedPassword);
-          } catch (error) {
-            log(red(`Failed to decrypt password for "${app} - ${identifier}": ${error.message}`));
-            handleError(error);
-            return null; // Skip this entry if decryption fails
-          }
+
+    const data = entries
+      .map((entry) => {
+        try {
           return {
-            application: app,
-            identifier,
-            password: decryptedPassword,
+            service: entry.service,
+            identifier: entry.identifier,
+            password: entry.password,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt,
           };
-        }).filter(entry => entry !== null); // Filter out any null entries
+        } catch (error) {
+          log(
+            red(
+              `Failed to decrypt password for "${entry.service} - ${entry.identifier}": ${error.message}`
+            )
+          );
+          handleError(error);
+          return null;
+        }
+      })
+      .filter((entry) => entry !== null);
 
-    await fs.promises.writeFile(exportPath, JSON.stringify(data, null, 2), "utf8");
+    await fs.promises.writeFile(
+      exportPath,
+      JSON.stringify(data, null, 2),
+      "utf8"
+    );
 
-    log(green(`Passwords exported to ${exportPath}`));
+    const numberOfPasswordsExported = data.length;
+    const numberOfPasswordsNotExported =
+      entries.length - numberOfPasswordsExported;
+
     log(
       yellow(
-        "Please make sure to protect this file as it contains sensitive information.\n"
+        `Make sure to protect this file as it contains sensitive information.${NEWLINE}`
       )
     );
 
-    log(green("Export completed successfully.\n"));
+    log(
+      green(
+        `✔ Export completed successfully. ${numberOfPasswordsExported} password${
+          numberOfPasswordsExported === 1 ? "" : "s"
+        } exported.${NEWLINE}`
+      )
+    );
+
+    if (numberOfPasswordsNotExported > 0) {
+      log(
+        yellow(
+          `${numberOfPasswordsNotExported} password${
+            numberOfPasswordsNotExported === 1 ? "" : "s"
+          } failed to export.${NEWLINE}`
+        )
+      );
+    }
+
     return true;
   } catch (error) {
     handleError(error);
-
     return false;
   }
 };
 
 /**
- * Imports passwords from a JSON file
- * @param {string[]} lines - The current password lines
- * @returns {Promise<boolean>} True if import was successful, false otherwise
+ * Imports passwords from a JSON file.
+ * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export const importPasswordsFromJSON = async (lines) => {
+export const importPasswordsFromJSON = async () => {
   try {
-    if (!(await validateMasterPassword())) {
+    if (!(await authenticateUser())) {
       return false;
     }
+
+    const defaultImportPath = `${os.homedir()}/passwords-export-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
 
     const { importPath } = await inquirer.prompt([
       {
@@ -98,8 +131,16 @@ export const importPasswordsFromJSON = async (lines) => {
         name: "importPath",
         message:
           "Enter the path to import passwords from (e.g. ./passwords-export.json):",
-        default: "./passwords-export.json",
-        validate: (value) => value.trim() !== "" || "Path cannot be empty.",
+        default: defaultImportPath,
+        validate: (value) => {
+          if (value.trim() === "") {
+            return "Path cannot be empty.";
+          }
+          if (!value.endsWith(".json")) {
+            return "File must have a .json extension.";
+          }
+          return true;
+        },
       },
     ]);
 
@@ -114,8 +155,8 @@ export const importPasswordsFromJSON = async (lines) => {
       }
       return false;
     }
-    let importedData;
 
+    let importedData;
     try {
       importedData = JSON.parse(fileContent);
     } catch (e) {
@@ -128,39 +169,74 @@ export const importPasswordsFromJSON = async (lines) => {
       return false;
     }
 
-    let imported = 0;
-
-    // Create a Set for faster duplicate checks
-    const existingEntries = new Set(
-      lines.map((line) => {
-        const [app, identifier] = line.split(" - ");
-        return `${app}-${identifier}`;
-      })
+    const existingEntries = await readPasswordEntries();
+    const existingKeys = new Set(
+      existingEntries.map((entry) => `${entry.service}-${entry.identifier}`)
     );
 
-    for (const entry of importedData) {
-      if (!entry.application || !entry.identifier || !entry.password) continue;
-      // Check for duplicates using the Set
-      const entryKey = `${entry.application}-${entry.identifier}`;
-      if (existingEntries.has(entryKey)) continue;
+    let imported = 0;
+    const newEntries = [...existingEntries];
 
-      const encryptedPassword = encryptPassword(entry.password);
-      lines.push(
-        `${entry.application} - ${entry.identifier} - ${encryptedPassword}`
-      );
-      existingEntries.add(entryKey); // Add to Set after adding to lines
+    for (const entry of importedData) {
+      if (!entry.service || !entry.identifier || !entry.password) continue;
+
+      const entryKey = `${entry.service}-${entry.identifier}`;
+      if (existingKeys.has(entryKey)) continue;
+
+      if (
+        !validationTools.validatePasswordEntry({
+          service: entry.service,
+          identifier: entry.identifier,
+          password: entry.password,
+          createdAt: entry.createdAt || new Date().toISOString(),
+          updatedAt: entry.updatedAt || new Date().toISOString(),
+        })
+      ) {
+        log(red(`Invalid password entry structure: ${entryKey}`));
+        continue;
+      }
+
+      newEntries.push({
+        service: entry.service,
+        identifier: entry.identifier,
+        password: entry.password,
+        createdAt: entry.createdAt || new Date().toISOString(),
+        updatedAt: entry.updatedAt || new Date().toISOString(),
+      });
+
+      existingKeys.add(entryKey);
       imported++;
     }
 
     if (imported > 0) {
-      const sortedLines = sortLines(lines);
-      await writeLines(sortedLines);
-      log(green(`Imported ${imported} passwords from ${importPath}\n`));
+      await writePasswordEntries(newEntries);
+      const numberOfPasswordsImported = imported;
+      const numberOfPasswordsNotImported =
+        newEntries.length - numberOfPasswordsImported;
+
+      log(
+        green(
+          `Imported ${numberOfPasswordsImported} password${
+            numberOfPasswordsImported === 1 ? "" : "s"
+          } from ${importPath}${NEWLINE}`
+        )
+      );
+
+      if (numberOfPasswordsNotImported > 0) {
+        log(
+          yellow(
+            `${numberOfPasswordsNotImported} password${
+              numberOfPasswordsNotImported === 1 ? "" : "s"
+            } failed to import.${NEWLINE}`
+          )
+        );
+      }
+
       return true;
     } else {
       log(
         yellow(
-          "No new passwords were imported (all were duplicates or invalid).\n"
+          `No new passwords were imported (all were duplicates or invalid).${NEWLINE}`
         )
       );
       return false;
@@ -172,18 +248,19 @@ export const importPasswordsFromJSON = async (lines) => {
 };
 
 /**
- * Exports all passwords to a CSV file (decrypted)
- * @param {string[]} lines - The password lines to export
- * @returns {Promise<boolean>} True if export was successful, false otherwise
+ * Exports all passwords to a CSV file.
+ * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export const exportPasswordsToCSV = async (lines) => {
+export const exportPasswordsToCSV = async () => {
   try {
-    if (!(await validateMasterPassword())) {
+    if (!(await authenticateUser())) {
       return false;
     }
 
-    if (lines.length === 0) {
-      log(yellow("No passwords to export.\n"));
+    const entries = await readPasswordEntries();
+
+    if (entries.length === 0) {
+      log(yellow("No passwords to export." + NEWLINE));
       return false;
     }
 
@@ -194,33 +271,35 @@ export const exportPasswordsToCSV = async (lines) => {
         message:
           "Enter the path to export passwords (e.g. ./passwords-export.csv):",
         default: "./passwords-export.csv",
-        validate: (value) => validateNonEmptyInput(value),
+        validate: (value) => validationTools.validateNonEmptyInput(value),
       },
     ]);
-    
-    const data = lines.map((line) => {
-      const [app, identifier, encryptedPassword] = line.split(" - ");
-      return {
-        application: app,
-        identifier,
-        password: decryptPassword(encryptedPassword),
-      };
-    });
+
+    const data = entries.map((entry) => ({
+      service: entry.service,
+      identifier: entry.identifier,
+      password: entry.password,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    }));
 
     const csvContent = data
-      .map((row) => `${row.application},${row.identifier},${row.password}`)
-      .join("\n");
+      .map(
+        (row) =>
+          `${row.service},${row.identifier},${row.password},${row.createdAt},${row.updatedAt}`
+      )
+      .join(NEWLINE);
 
     await fs.promises.writeFile(exportPath, csvContent, "utf8");
-    
-    log(green(`Passwords exported to ${exportPath}`));
+
+    log(green(`✔ Passwords exported to ${exportPath}`));
     log(
       yellow(
-        "Please make sure to protect this file as it contains sensitive information.\n"
+        "Please make sure to protect this file as it contains sensitive information." + NEWLINE
       )
     );
 
-    log(green("Export completed successfully.\n"));
+    log(green("✔ Export completed successfully." + NEWLINE));
     return true;
   } catch (error) {
     handleError(error);
@@ -229,24 +308,23 @@ export const exportPasswordsToCSV = async (lines) => {
 };
 
 /**
- * Imports passwords from a CSV file
- * @param {string[]} lines - The current password lines
- * @returns {Promise<boolean>} True if import was successful, false otherwise
+ * Imports passwords from a CSV file.
+ * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export const importPasswordsFromCSV = async (lines) => {
+export const importPasswordsFromCSV = async () => {
   try {
-    if (!(await validateMasterPassword())) {
+    if (!(await authenticateUser())) {
       return false;
     }
-    
+
     const { importPath } = await inquirer.prompt([
       {
         type: "input",
         name: "importPath",
         message:
-          "Enter the path to import passwords from (e.g. ./passwords-export.csv):",
+          "Enter the path to import passwords from (e.g. ./passwords-export.csv):" + NEWLINE,
         default: "./passwords-export.csv",
-        validate: (value) => validateNonEmptyInput(value),
+        validate: (value) => validationTools.validateNonEmptyInput(value),
       },
     ]);
 
@@ -255,9 +333,9 @@ export const importPasswordsFromCSV = async (lines) => {
       fileContent = fs.readFileSync(importPath, "utf8");
     } catch (error) {
       if (error.code === "ENOENT") {
-        log(red("File does not exist."));
+        log(red("File does not exist." + NEWLINE));
       } else {
-        log(red("An error occurred while reading the file."));
+        log(red("An error occurred while reading the file." + NEWLINE));
       }
       return false;
     }
@@ -266,37 +344,77 @@ export const importPasswordsFromCSV = async (lines) => {
       .split(os.EOL)
       .map((line) => line.trim())
       .filter((line) => line !== "");
-    let imported = 0;
 
-    // Create a Set for faster duplicate checks
-    const existingEntries = new Set(
-      lines.map((line) => {
-        const [app, identifier] = line.split(" - ");
-        return `${app}-${identifier}`;
-      })
+    const existingEntries = await readPasswordEntries();
+    const existingKeys = new Set(
+      existingEntries.map((entry) => `${entry.service}-${entry.identifier}`)
     );
 
+    let imported = 0;
+    const newEntries = [...existingEntries];
+
     for (const csvLine of linesArray) {
-      const [app, identifier, password] = csvLine.split(",");
-      if (!app || !identifier || !password) continue;
-      // Check for duplicates using the Set
-      const entryKey = `${app}-${identifier}`;
-      if (existingEntries.has(entryKey)) continue;
-      const encryptedPassword = encryptPassword(password);
-      lines.push(`${app} - ${identifier} - ${encryptedPassword}`);
-      existingEntries.add(entryKey);
+      const [service, identifier, password, createdAt, updatedAt] =
+        csvLine.split(",");
+      if (!service || !identifier || !password) continue;
+
+      const entryKey = `${service}-${identifier}`;
+      if (existingKeys.has(entryKey)) continue;
+
+      if (
+        !validationTools.validatePasswordEntry({
+          service,
+          identifier,
+          password,
+          createdAt: createdAt || new Date().toISOString(),
+          updatedAt: updatedAt || new Date().toISOString(),
+        })
+      ) {
+        log(red(`Invalid password entry structure: ${entryKey}`));
+        continue;
+      }
+
+      newEntries.push({
+        service,
+        identifier,
+        password,
+        createdAt: createdAt || new Date().toISOString(),
+        updatedAt: updatedAt || new Date().toISOString(),
+      });
+
+      existingKeys.add(entryKey);
       imported++;
     }
-    
-    if (imported > 0) {
-      const sortedLines = sortLines(lines);
-      await writeLines(sortedLines);
-      log(green(`Imported ${imported} passwords from ${importPath}\n`));
+
+    const numberOfPasswordsImported = imported;
+    const numberOfPasswordsNotImported =
+      newEntries.length - numberOfPasswordsImported;
+
+    if (numberOfPasswordsImported > 0) {
+      await writePasswordEntries(newEntries);
+
+      if (numberOfPasswordsNotImported > 0) {
+        log(
+          yellow(
+            `${numberOfPasswordsNotImported} password${
+              numberOfPasswordsNotImported === 1 ? "" : "s"
+            } failed to import.${NEWLINE}`
+          )
+        );
+      }
+
+      log(
+        green(
+          `Imported ${numberOfPasswordsImported} password${
+            numberOfPasswordsImported === 1 ? "" : "s"
+          } from ${importPath}${NEWLINE}`
+        )
+      );
       return true;
     } else {
       log(
         yellow(
-          "No new passwords were imported (all were duplicates or invalid).\n"
+          `No new passwords were imported (all were duplicates or invalid).${NEWLINE}`
         )
       );
       return false;
@@ -308,22 +426,34 @@ export const importPasswordsFromCSV = async (lines) => {
 };
 
 /**
- * Handles the export of passwords based on the selected format
- * @param {string} format - The format to export to (JSON or CSV)
- * @param {string[]} lines - The password lines to export
- * @returns {Promise<boolean>} True if export was successful, false otherwise
+ * Handles the export of passwords based on the selected format.
+ * @param {string} format - The format to export to (JSON or CSV).
+ * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export const handleExportPasswords = async (format, lines) => {
+export const handleExportPasswords = async () => {
   try {
-    if (format === "JSON") {
-      return await exportPasswordsToJSON(lines);
-    } else if (format === "CSV") {
-      return await exportPasswordsToCSV(lines);
-    } else if (format === "CANCEL") {
-      log(yellow("Export cancelled.\n"));
+    if (!(await authenticateUser())) {
+      return false;
+    }
+
+    const format = await inquirer.prompt([
+      {
+        type: "list",
+        name: "format",
+        message: "Select the format to export passwords:",
+        choices: ["JSON", "CSV", "Cancel"],
+      },
+    ]);
+
+    if (format.format === "JSON") {
+      return await exportPasswordsToJSON();
+    } else if (format.format === "CSV") {
+      return await exportPasswordsToCSV();
+    } else if (format.format === "Cancel") {
+      log(yellow("Export cancelled." + NEWLINE));
       return false;
     } else {
-      log(red("Invalid format selected.\n"));
+      log(red("Invalid format selected." + NEWLINE));
       return false;
     }
   } catch (error) {
@@ -331,23 +461,36 @@ export const handleExportPasswords = async (format, lines) => {
     return false;
   }
 };
+
 /**
- * Handles the import of passwords based on the selected format
- * @param {string} format - The format to import from (JSON or CSV)
- * @param {string[]} lines - The current password lines
- * @returns {Promise<boolean>} True if import was successful, false otherwise
+ * Handles the import of passwords based on the selected format.
+ * @param {string} format - The format to import from (JSON or CSV).
+ * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export const handleImportPasswords = async (format, lines) => {
+export const handleImportPasswords = async () => {
   try {
-    if (format === "JSON") {
-      return await importPasswordsFromJSON(lines);
-    } else if (format === "CSV") {
-      return await importPasswordsFromCSV(lines);
-    } else if (format === "CANCEL") {
-      log(yellow("Import cancelled.\n"));
+    if (!(await authenticateUser())) {
+      return false;
+    }
+
+    const format = await inquirer.prompt([
+      {
+        type: "list",
+        name: "format",
+        message: "Select the format to import passwords:",
+        choices: ["JSON", "CSV", "Cancel"],
+      },
+    ]);
+
+    if (format.format === "JSON") {
+      return await importPasswordsFromJSON();
+    } else if (format.format === "CSV") {
+      return await importPasswordsFromCSV();
+    } else if (format.format === "Cancel") {
+      log(yellow("Import cancelled." + NEWLINE));
       return false;
     } else {
-      log(red("Invalid format selected.\n"));
+      log(red("Invalid format selected." + NEWLINE));
       return false;
     }
   } catch (error) {
