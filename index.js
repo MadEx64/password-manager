@@ -1,48 +1,60 @@
 import inquirer from "inquirer";
-import chalk from "chalk";
-import {
-  authenticateUser,
-  isUserAuthenticated,
-  updateMasterPassword,
-} from "./src/authentication.js";
+import { log, green, yellow, red, bold } from "./src/logger.js";
+import { checkPasswordVaultIntegrity, handleBackup } from "./src/fileOperations/index.js";
+import { authenticateUser, handlePasswordUpdate } from "./src/auth/index.js";
 import {
   addPassword,
   viewPassword,
-  deletePassword,
-  updatePassword,
-  searchPassword
+  searchPassword,
 } from "./src/passwordManager.js";
-import { createBackupPassword, restoreBackupPassword, deleteBackupPassword } from "./src/backupOperations.js";
-import { handleExportPasswords, handleImportPasswords } from "./src/exportImportOperations.js";
-import { createPasswordsFile, readLines } from "./src/fileOperations.js";
-import { handleError } from "./src/errorHandler.js";
+import {
+  handleExportPasswords,
+  handleImportPasswords,
+} from "./src/exportImportOperations.js";
+import { PasswordManagerError } from "./src/errorHandler.js";
+import { ERROR_CODES } from "./src/constants.js";
 import { NavigationAction } from "./src/navigation.js";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+
+// Parse CLI options
+const argv = yargs(hideBin(process.argv))
+  .option("session-timeout", {
+    alias: "t",
+    type: "number",
+    description: "Session timeout in minutes",
+  })
+  .help()
+  .parse();
+
+if (argv.sessionTimeout) {
+  // Set env variable in ms
+  process.env.PASSWORD_MANAGER_SESSION_TIMEOUT = (
+    argv.sessionTimeout *
+    60 *
+    1000
+  ).toString();
+  log(
+    green(`[Config] Session timeout set to ${argv.sessionTimeout} minute(s).`)
+  );
+}
 
 /**
- * Main function to manage passwords
+ * Main function to manage passwords.
  * @returns {Promise<void>}
  * @description This function is the entry point for the application.
  * It authenticates the user, then displays a list of actions to choose from.
  * It then prompts the user to select an action and executes it.
  * It continues to prompt the user to select an action until they choose to exit.
  */
-const managePasswords = async () => {
-  // Run createPasswordsFile to create the passwords file if it doesn't exist
-  const passwordsFileCreated = await createPasswordsFile();
-
-  if (passwordsFileCreated) {
-    console.log(chalk.green("Passwords file created successfully"));
-  }
-
-  const lines = await readLines();
+async function managePasswords() {
+  await checkPasswordVaultIntegrity();
 
   try {
-    // Authenticate the user if they are not already authenticated
-    while (!isUserAuthenticated()) {
-      await authenticateUser();
-    }
+    // Authenticate the user on first run
+    await authenticateUser();
 
-    while (isUserAuthenticated()) {
+    while (true) {
       const { action } = await inquirer.prompt([
         {
           type: "list",
@@ -51,13 +63,9 @@ const managePasswords = async () => {
           choices: [
             "Add password",
             "View password",
-            "Delete password",
-            "Update password",
             "Search password",
             "Update master password",
-            "Create backup",
-            "Restore backup",
-            "Delete backup",
+            "Backup & Restore",
             "Export passwords",
             "Import passwords",
             "Exit",
@@ -68,111 +76,49 @@ const managePasswords = async () => {
       let result;
       switch (action) {
         case "Add password":
-          result = await addPassword(lines);
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
+          result = await addPassword();
           break;
         case "View password":
-          result = await viewPassword(lines);
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
-          break;
-        case "Delete password":
-          result = await deletePassword(lines);
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          } else if (result === true) {
-            const updatedLines = await readLines();
-            lines.splice(0, lines.length, ...updatedLines);
-          }
-          break;
-        case "Update password":
-          result = await updatePassword(lines);
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
+          result = await viewPassword();
           break;
         case "Update master password":
-          result = await updateMasterPassword();
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
+          result = await handlePasswordUpdate();
           break;
         case "Search password":
-          result = await searchPassword(lines);
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
+          result = await searchPassword();
           break;
-        case "Create backup":
-          result = await createBackupPassword();
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
+        case "Backup & Restore":
+          result = await handleBackup();
           break;
-        case "Restore backup":
-          result = await restoreBackupPassword();
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          } else if (result === true) {
-            // Reload the lines after restoring a backup
-            const updatedLines = await readLines();
-            lines.splice(0, lines.length, ...updatedLines);
-          }
+        case "Export passwords":
+          result = await handleExportPasswords();
           break;
-        case "Delete backup":
-          result = await deleteBackupPassword();
-          if (result === NavigationAction.MAIN_MENU) {
-            // Already at main menu, do nothing
-            break;
-          }
+        case "Import passwords":
+          result = await handleImportPasswords();
           break;
-        case "Export passwords": {
-          const { format } = await inquirer.prompt([
-            {
-              type: "list",
-              name: "format",
-              message: "Choose export format:",
-              choices: ["JSON", "CSV", "Cancel"],
-            },
-          ]);
-          result = await handleExportPasswords(format, lines);
-          break;
-        }
-        case "Import passwords": {
-          const { format } = await inquirer.prompt([
-            {
-              type: "list",
-              name: "format",
-              message: "Choose import format:",
-              choices: ["JSON", "CSV", "Cancel"],
-            },
-          ]);
-          result = await handleImportPasswords(format, lines);
-          if (result === true) {
-            const updatedLines = await readLines();
-            lines.splice(0, lines.length, ...updatedLines);
-          }
-          break;
-        }
         case "Exit":
-          console.log(chalk.yellow("Exiting..."));
+          log(yellow("Exiting..."));
           return;
+      }
+
+      // Handle operation results
+      if (result === NavigationAction.MAIN_MENU) {
+        // Already at main menu, continue to next iteration
+        continue;
+      } else if (result === false) {
+        // Operation failed, continue to next iteration
+        continue;
+      } else if (result === true) {
+        // Operation succeeded, continue to next iteration
+        continue;
       }
     }
   } catch (error) {
-    handleError(error);
+    throw new PasswordManagerError(
+      red(error.message),
+      bold(red(ERROR_CODES.INTERNAL_ERROR))
+    );
   }
-};
+}
 
 managePasswords();
