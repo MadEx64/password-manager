@@ -262,7 +262,7 @@ export async function updatePasswordEntry(entry) {
   try {
     const entries = await readPasswordEntries();
     const updatedEntries = entries.map(e => {
-      if (e.service === entry.service && e.identifier === entry.identifier) {
+      if (e.service === entry.service && e.identifier === (entry.oldIdentifier || entry.identifier)) {
         return {
           ...e,
           ...entry,

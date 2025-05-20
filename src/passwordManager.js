@@ -122,7 +122,7 @@ export async function addPassword() {
         })
       ) {
         throw new PasswordManagerError(
-          red("Invalid password entry structure"),
+          red("Invalid password entry structure. Please try again."),
           bold(red(ERROR_CODES.INVALID_PASSWORD_ENTRY))
         );
       }
@@ -325,12 +325,23 @@ export async function updatePassword(selectedEntry) {
         name: "newIdentifier",
         message: "Enter new identifier (press Enter to keep current):",
         default: selectedIdentifier,
-        validate: (value) => {
+        validate: async (value) => {
           const inputValidation = validationTools.validateInput(
             value,
             "identifier"
           );
           if (inputValidation !== true) return inputValidation;
+
+          if (value.trim() === selectedIdentifier) return true; // allow keeping the same identifier
+
+          const entries = await readPasswordEntries();
+
+          const identifierValidation = validationTools.validateNonDuplicateIdentifier(
+            value.trim(),
+            selectedService,
+            entries
+          );
+          if (identifierValidation !== true) return identifierValidation;
 
           return true;
         },
@@ -445,7 +456,7 @@ export async function updatePassword(selectedEntry) {
       })
     ) {
       throw new PasswordManagerError(
-        red("Invalid password entry structure"),
+        red("Invalid password entry structure. Please try again."),
         bold(red(ERROR_CODES.INVALID_PASSWORD_ENTRY))
       );
     }
@@ -453,6 +464,7 @@ export async function updatePassword(selectedEntry) {
     await updatePasswordEntry({
       service: selectedService,
       identifier: newIdentifier,
+      oldIdentifier: selectedIdentifier,
       password: encryptedPassword,
       updatedAt: new Date().toISOString(),
     });
