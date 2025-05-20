@@ -12,7 +12,7 @@ import { green, yellow, red, log } from "./logger.js";
  * Exports all passwords to a JSON file.
  * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export const exportPasswordsToJSON = async () => {
+export async function exportPasswordsToJSON() {
   try {
     if (!(await authenticateUser())) {
       return false;
@@ -109,13 +109,13 @@ export const exportPasswordsToJSON = async () => {
     handleError(error);
     return false;
   }
-};
+}
 
 /**
  * Imports passwords from a JSON file.
  * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export const importPasswordsFromJSON = async () => {
+export async function importPasswordsFromJSON() {
   try {
     if (!(await authenticateUser())) {
       return false;
@@ -245,13 +245,13 @@ export const importPasswordsFromJSON = async () => {
     handleError(error);
     return false;
   }
-};
+}
 
 /**
  * Exports all passwords to a CSV file.
  * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export const exportPasswordsToCSV = async () => {
+export async function exportPasswordsToCSV() {
   try {
     if (!(await authenticateUser())) {
       return false;
@@ -305,13 +305,13 @@ export const exportPasswordsToCSV = async () => {
     handleError(error);
     return false;
   }
-};
+}
 
 /**
  * Imports passwords from a CSV file.
  * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export const importPasswordsFromCSV = async () => {
+export async function importPasswordsFromCSV() {
   try {
     if (!(await authenticateUser())) {
       return false;
@@ -423,14 +423,14 @@ export const importPasswordsFromCSV = async () => {
     handleError(error);
     return false;
   }
-};
+}
 
 /**
  * Handles the export of passwords based on the selected format.
  * @param {string} format - The format to export to (JSON or CSV).
  * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export const handleExportPasswords = async () => {
+export async function handleExportPasswords() {
   try {
     if (!(await authenticateUser())) {
       return false;
@@ -460,14 +460,14 @@ export const handleExportPasswords = async () => {
     handleError(error);
     return false;
   }
-};
+}
 
 /**
  * Handles the import of passwords based on the selected format.
  * @param {string} format - The format to import from (JSON or CSV).
  * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export const handleImportPasswords = async () => {
+export async function handleImportPasswords() {
   try {
     if (!(await authenticateUser())) {
       return false;
@@ -497,4 +497,4 @@ export const handleImportPasswords = async () => {
     handleError(error);
     return false;
   }
-};
+}

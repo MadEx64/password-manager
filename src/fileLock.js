@@ -11,7 +11,7 @@ import { BASE_DIR } from './constants.js';
  * @returns {Promise<boolean>} True if lock was acquired, false otherwise.
  * @description This function acquires a file lock to prevent multiple instances of the program from accessing the same file at the same time.
  */
-export const acquireLock = async (maxRetries = FILE_LOCK.MAX_RETRIES) => {
+export async function acquireLock(maxRetries = FILE_LOCK.MAX_RETRIES) {
   let retries = 0;
 
   // First check if lock is stale and clear it if needed
@@ -72,14 +72,14 @@ export const acquireLock = async (maxRetries = FILE_LOCK.MAX_RETRIES) => {
     }
   }
   return false;
-};
+}
 
 /**
  * Releases a file lock.
  * @returns {Promise<void>}
  * @description This function releases a file lock to allow other instances of the program to access the file.
  */
-export const releaseLock = async () => {
+export async function releaseLock() {
   try {
     if (fs.existsSync(FILE_LOCK.LOCK_FILE)) {
       // Delete the lock file completely
@@ -89,4 +89,4 @@ export const releaseLock = async () => {
     // Ignore errors when releasing lock
     console.error("Error releasing lock:", error);
   }
-};
+}

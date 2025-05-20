@@ -14,11 +14,11 @@ const NavigationAction = {
  * Prompt the user for navigation options
  * @returns {Promise<string>} The navigation action chosen by the user
  */
-export const promptNavigation = async (navigationOptions = [
+export async function promptNavigation(navigationOptions = [
   { name: "Continue with current operation", value: NavigationAction.CONTINUE },
   { name: "Go back to previous step", value: NavigationAction.GO_BACK },
   { name: "Abort, return to main menu", value: NavigationAction.MAIN_MENU }
-]) => {
+]) {
   const { action } = await inquirer.prompt([
     {
       type: "list",
@@ -27,16 +27,15 @@ export const promptNavigation = async (navigationOptions = [
       choices: navigationOptions,
     },
   ]);
-
   return action;
-};
+}
 
 /**
  * Handle navigation action
  * @param {string} action - The navigation action to handle
  * @returns {boolean} True if the action was handled successfully, false otherwise
  */
-export const handleNavigation = async (action) => {
+export async function handleNavigation(action) {
   switch (action) {
     case NavigationAction.CONTINUE:
       return false; // No navigation needed
@@ -49,6 +48,6 @@ export const handleNavigation = async (action) => {
     default:
       return false;
   }
-};
+}
 
 export { NavigationAction }; 
