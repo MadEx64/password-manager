@@ -1,83 +1,58 @@
+import inquirer from "inquirer";
+import clipboard from "clipboardy";
+import ora from "ora";
+import { authenticateUser } from "./auth/index.js";
+import { promptIdentifier } from "./prompts.js";
 import {
-  writeLines,
-  getAppNames,
-  sortLines,
-} from "./fileOperations.js";
+  writePasswordEntries,
+  readPasswordEntries,
+  deletePasswordEntry,
+  updatePasswordEntry,
+} from "./fileOperations/index.js";
 import {
   generateRandomPassword,
   encryptPassword,
   decryptPassword,
 } from "./utils.js";
-import {
-  PasswordManagerError,
-  handleError,
-  validateInput,
-  checkPasswordMatch,
-  validatePassword,
-} from "./errorHandler.js";
-import { validateMasterPassword, clearSession } from "./authentication.js";
-import { ERROR_CODES } from "./constants.js";
-import inquirer from "inquirer";
-import clipboard from "clipboardy";
-import ora from "ora";
+import { handleError, PasswordManagerError } from "./errorHandler.js";
+import validationTools from "./validation.js";
+import { ERROR_CODES, NEWLINE } from "./constants.js";
 import { promptNavigation, NavigationAction } from "./navigation.js";
-
-// Chalk variables
-import chalk from "chalk";
-const log = console.log;
-const bold = chalk.bold;
-const underline = chalk.underline;
-const green = chalk.green;
-const yellow = chalk.yellow;
-const red = chalk.red;
+import { log, bold, underline, green, yellow, red } from "./logger.js";
 
 /**
- * Adds a password to the password manager
+ * Adds a new password entry to the vault.
+ *
+ * Prompts the user to enter the name of the service (e.g. Google, Facebook, etc.), the identifier (e.g. email address, username), and the password.
+ * The user can also choose to generate a random password or use their own password.
+ *
  * @returns {Promise<boolean|string>} True if the password was added successfully,
- * false otherwise, or a NavigationAction if navigation was requested
+ * false otherwise, or a NavigationAction if navigation was requested.
  */
-export const addPassword = async (lines) => {
+export async function addPassword() {
   while (true) {
     try {
-      // Validate the master password before proceeding
-      if (!(await validateMasterPassword())) {
+      if (!(await authenticateUser())) {
         return false;
       }
 
-      // First prompt for the application name separately
-      const { name } = await inquirer.prompt([
+      const entries = await readPasswordEntries();
+
+      const { service } = await inquirer.prompt([
         {
           type: "input",
-          name: "name",
-          message: "Enter the name of the site or application:",
-          validate: (value) => validateInput(value, "application name"),
+          name: "service",
+          message: "Enter the name of the service:",
+          validate: (value) =>
+            validationTools.validateInput(value, "service name"),
           filter: (value) =>
             value.trim().charAt(0).toUpperCase() + value.slice(1),
         },
       ]);
 
-      // Then prompt for the rest of the information
+      const identifier = await promptIdentifier(service, entries);
+
       const answers = await inquirer.prompt([
-        {
-          type: "input",
-          name: "identifier",
-          message: "Enter the identifier (e.g., email address, username):",
-          validate: (value) => {
-            if (value.trim() === "") {
-              return "Identifier cannot be empty. Please enter a valid identifier.";
-            }
-            if (
-              lines.some((line) => {
-                const [app, identifier] = line.split(" - ");
-                return app === name && identifier === value.trim();
-              })
-            ) {
-              return "Identifier already exists. Please try again with a different identifier.";
-            }
-            return true;
-          },
-          filter: (value) => value.trim(),
-        },
         {
           type: "confirm",
           name: "generatePassword",
@@ -109,7 +84,7 @@ export const addPassword = async (lines) => {
           name: "userPassword",
           message: "Enter your password:",
           when: (answers) => !answers.generatePassword,
-          validate: (value) => validatePassword(value),
+          validate: (value) => validationTools.validatePassword(value),
           mask: "*",
         },
         {
@@ -119,16 +94,15 @@ export const addPassword = async (lines) => {
           mask: "*",
           when: (answers) => !answers.generatePassword,
           validate: (value, answers) =>
-            checkPasswordMatch(value, answers.userPassword),
+            validationTools.checkPasswordMatch(value, answers.userPassword),
         },
       ]);
 
-      // Add navigation prompt here after all password information has been collected
       const navigationAction = await promptNavigation();
       if (navigationAction === NavigationAction.GO_BACK) {
-        continue; // Let the user select an app and identifier again
+        continue;
       } else if (navigationAction === NavigationAction.MAIN_MENU) {
-        clearSession();
+        log(yellow("Aborting. Returning to main menu..." + NEWLINE));
         return NavigationAction.MAIN_MENU;
       }
 
@@ -137,20 +111,38 @@ export const addPassword = async (lines) => {
         : answers.userPassword;
 
       const encryptedPassword = encryptPassword(password);
-      const lastLine = `${name} - ${answers.identifier} - ${encryptedPassword}`;
-      lines.push(lastLine);
-      const sortedLines = sortLines(lines);
-      await writeLines(sortedLines);
 
-      if (answers.generatePassword) {
-        log(yellow(`Generated password: ${password}`));
+      if (
+        !validationTools.validatePasswordEntry({
+          service: service,
+          identifier: identifier,
+          password: encryptedPassword,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      ) {
+        throw new PasswordManagerError(
+          red("Invalid password entry structure"),
+          bold(red(ERROR_CODES.INVALID_PASSWORD_ENTRY))
+        );
       }
 
-      log(green("✓ Password added successfully!\n"));
+      entries.push({
+        service: service,
+        identifier: identifier,
+        password: encryptedPassword,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await writePasswordEntries(entries);
 
-      // Prompts user for another potential password
+      if (answers.generatePassword) {
+        await hidePassword(password, "Generated password");
+      }
+
+      log(green("✔ Password added successfully!" + NEWLINE));
+
       const { addAnother } = await inquirer.prompt([
         {
           type: "confirm",
@@ -160,122 +152,127 @@ export const addPassword = async (lines) => {
         },
       ]);
       if (!addAnother) {
-        clearSession();
         return true;
       }
 
-      // If the user chooses to add another password, the loop continues
       continue;
     } catch (error) {
       handleError(error);
-      return false;
     }
   }
-};
+}
 
 /**
- * Views a password from the password manager
- * @returns {Promise<boolean|string>} True if the password was viewed successfully,
- * false otherwise, or a NavigationAction if navigation was requested
+ * Prompts the user to show a password entry, copy to the clipboard, update it, delete it, or return to the main menu.
+ *
+ * @param {Object[]} entries - Optional array of password entries to show (used when searching for a password entry).
+ * If not provided, the user will be prompted to select a service and identifier.
+ *
+ * @returns {Promise<boolean|function|NavigationAction>} True if the password entry was shown successfully, a function call, or a NavigationAction if navigation was requested.
  */
-export const viewPassword = async (lines) => {
+export async function viewPassword(entries = null) {
   while (true) {
     try {
-      if (lines.length === 0) {
-        log(yellow("No passwords stored yet.\n"));
+      if (!(await authenticateUser())) {
         return false;
       }
 
-      // Validate the master password before proceeding
-      if (!(await validateMasterPassword())) {
+      if (!entries) {
+        entries = await readPasswordEntries();
+      }
+
+      if (entries.length === 0) {
+        log(yellow("No passwords stored yet." + NEWLINE));
         return false;
       }
 
-      const appNames = getAppNames(lines);
-      const appNamesWithIdentifiers = appNames.map((app) => {
-        const appPasswords = lines.filter((line) => line.startsWith(app));
-        const identifiers = appPasswords.map((line) => line.split(" - ")[1]);
-        return { app, identifiers };
+      const serviceNames = [...new Set(entries.map((entry) => entry.service))];
+      const serviceNamesWithIdentifiers = serviceNames.map((service) => {
+        const serviceEntries = entries.filter(
+          (entry) => entry.service === service
+        );
+        return {
+          service,
+          identifiers: serviceEntries.map((entry) => entry.identifier),
+        };
       });
 
-      const { selectedApp } = await inquirer.prompt([
+      const { selectedService } = await inquirer.prompt([
         {
           type: "list",
-          name: "selectedApp",
-          message: "Select an application:",
-          choices: appNames,
+          name: "selectedService",
+          message: "Select a service:",
+          choices: serviceNames,
         },
       ]);
 
-      // Get the identifiers for the selected app from the appNamesWithIdentifiers array
-      const selectedAppIdentifiers = appNamesWithIdentifiers.find(
-        (app) => app.app === selectedApp
+      const selectedServiceIdentifiers = serviceNamesWithIdentifiers.find(
+        (service) => service.service === selectedService
       ).identifiers;
 
-      // Prompt the user to select an identifier from the selected app
       const { selectedIdentifier } = await inquirer.prompt([
         {
           type: "list",
           name: "selectedIdentifier",
           message: "Select an identifier:",
-          choices: selectedAppIdentifiers,
+          choices: selectedServiceIdentifiers,
         },
       ]);
 
-      // Only add navigation here after user has selected app and identifier
-      const navigationAction = await promptNavigation();
-      if (navigationAction === NavigationAction.GO_BACK) {
-        continue;
-      } else if (navigationAction === NavigationAction.MAIN_MENU) {
-        clearSession();
-        return NavigationAction.MAIN_MENU;
-      }
-
-      // Find the line that starts with the selected app and includes the selected identifier
-      const selectedLine = lines.find(
-        (line) =>
-          line.startsWith(selectedApp) && line.includes(selectedIdentifier)
+      const selectedEntry = entries.find(
+        (entry) =>
+          entry.service === selectedService &&
+          entry.identifier === selectedIdentifier
       );
-      if (!selectedLine) {
+
+      if (!selectedEntry) {
         throw new PasswordManagerError(
-          "Selected application not found",
-          ERROR_CODES.FILE_NOT_FOUND
+          red("Selected service not found"),
+          bold(red(ERROR_CODES.SERVICE_NOT_FOUND))
         );
       }
 
-      // Split the line into app, identifier, and encrypted password
-      const [app, identifier, encryptedPassword] = selectedLine.split(" - ");
-      const decryptedPassword = decryptPassword(encryptedPassword);
-
-      // TODO: Consider using a more secure way to get the password
       const { action } = await inquirer.prompt([
         {
           type: "list",
           name: "action",
           message: "What would you like to do?",
-          choices: ["Show Password", "Copy to Clipboard"],
+          choices: [
+            "Show Password",
+            "Copy to Clipboard",
+            "Update Password",
+            "Delete Password",
+            "Main Menu",
+          ],
         },
       ]);
 
+      const decryptedPassword = decryptPassword(selectedEntry.password);
+
       if (action === "Show Password") {
-        const hiddenPassword = "*".repeat(decryptedPassword.length);
-        log(underline(`\nApplication`), bold.green(app));
-        log(underline(`Identifier`), bold.green(identifier));
-        process.stdout.write(underline(`Password`) + " " + bold.green(decryptedPassword));
-        await new Promise((resolve) => setTimeout(resolve, 10000));
-        // Move cursor to start of line, clear line, and overwrite with hidden password
-        process.stdout.write("\r" + underline(`Password`) + " " + bold.green(hiddenPassword) + "\n\n");
+        log(underline(`\nService`), bold.green(selectedEntry.service));
+        log(underline(`Identifier`), bold.green(selectedEntry.identifier));
+        await hidePassword(decryptedPassword, underline(`Password`));
       } else if (action === "Copy to Clipboard") {
         try {
           clipboard.writeSync(decryptedPassword);
-          log(green("Password copied to clipboard!\n"));
+          log(green("✔ Password copied to clipboard!" + NEWLINE));
         } catch (error) {
-          log(red("Failed to copy password to clipboard. Please try again."));
+          log(
+            red(
+              "Failed to copy password to clipboard. Please try again." +
+                NEWLINE
+            )
+          );
         }
+      } else if (action === "Update Password") {
+        return await updatePassword(selectedEntry);
+      } else if (action === "Delete Password") {
+        return await deletePassword(selectedEntry);
+      } else if (action === "Main Menu") {
+        return NavigationAction.MAIN_MENU;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
       const { viewAnother } = await inquirer.prompt([
         {
           type: "confirm",
@@ -284,151 +281,36 @@ export const viewPassword = async (lines) => {
           default: false,
         },
       ]);
+
       if (!viewAnother) {
-        clearSession();
-        return true;
+        try {
+          return true;
+        } catch (error) {
+          log(yellow("Session cleared." + NEWLINE));
+        }
       }
 
       continue;
     } catch (error) {
       handleError(error);
-      return false;
     }
   }
-};
+}
 
 /**
- * Deletes a password from the password manager
- * @returns {Promise<boolean|string>} True if the password was deleted successfully,
- * false otherwise, or a NavigationAction if navigation was requested
+ * Updates a password entry in the vault.
+ *
+ * @returns {Promise<boolean|string>} True if the password was updated successfully.
+ * false otherwise, or a NavigationAction if navigation was requested.
  */
-export const deletePassword = async (lines) => {
+export async function updatePassword(selectedEntry) {
   try {
-    if (lines.length === 0) {
-      log(yellow("No passwords stored yet.\n"));
+    if (!(await authenticateUser())) {
       return false;
     }
 
-    // Validate the master password before proceeding
-    if (!(await validateMasterPassword())) {
-      return false;
-    }
-
-    const appNames = getAppNames(lines);
-
-    const { selectedApp } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "selectedApp",
-        message: "Select an application to delete a password from:",
-        choices: appNames,
-      },
-    ]);
-
-    const selectedAppLines = lines.filter((line) =>
-      line.startsWith(selectedApp)
-    );
-    const identifiers = selectedAppLines.map((line) => line.split(" - ")[1]);
-
-    const { selectedIdentifier } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "selectedIdentifier",
-        message: "Select an identifier to delete a password from:",
-        choices: identifiers,
-      },
-    ]);
-
-    // Add navigation prompt here after user has selected app and identifier but before confirmation
-    const navigationAction = await promptNavigation();
-    if (navigationAction === NavigationAction.GO_BACK) {
-      return await deletePassword(lines); // Let the user select an app and identifier again
-    } else if (navigationAction === NavigationAction.MAIN_MENU) {
-      clearSession();
-      return NavigationAction.MAIN_MENU;
-    }
-
-    const { confirmDelete } = await inquirer.prompt([
-      {
-        type: "confirm",
-        name: "confirmDelete",
-        message: "Are you sure you want to delete this password?",
-        default: false,
-      },
-    ]);
-
-    if (confirmDelete) {
-      const updatedLines = lines.filter((line) => {
-        // Keep lines that do not match the selected app and identifier
-        const [app, identifier] = line.split(" - ");
-        return !(app === selectedApp && identifier === selectedIdentifier);
-      });
-      // Rewrite the updated lines to the file to avoid empty lines
-      await writeLines(updatedLines);
-
-      log(green("Password deleted successfully!\n"));
-      clearSession();
-      return true;
-    } else {
-      log(yellow("Deletion cancelled.\n"));
-      return false;
-    }
-  } catch (error) {
-    handleError(error);
-    return false;
-  }
-};
-
-/**
- * Updates a password in the password manager
- * @returns {Promise<boolean|string>} True if the password was updated successfully,
- * false otherwise, or a NavigationAction if navigation was requested
- * @throws {PasswordManagerError} If the application or identifier is not found
- */
-export const updatePassword = async (lines) => {
-  try {
-    if (lines.length === 0) {
-      log(yellow("No passwords stored yet.\n"));
-      return false;
-    }
-
-    // Validate the master password before proceeding
-    if (!(await validateMasterPassword())) {
-      return false;
-    }
-
-    const appNames = getAppNames(lines);
-    const { selectedApp } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "selectedApp",
-        message: "Select an application to update:",
-        choices: appNames,
-      },
-    ]);
-
-    const selectedAppLines = lines.filter((line) =>
-      line.startsWith(selectedApp)
-    );
-    const identifiers = selectedAppLines.map((line) => line.split(" - ")[1]);
-
-    const { selectedIdentifier } = await inquirer.prompt([
-      {
-        type: "list",
-        name: "selectedIdentifier",
-        message: "Select an identifier to update:",
-        choices: identifiers,
-      },
-    ]);
-
-    // Add navigation prompt here after user has selected app and identifier
-    const navigationAction = await promptNavigation();
-    if (navigationAction === NavigationAction.GO_BACK) {
-      return await updatePassword(lines); // Let the user select an app and identifier again
-    } else if (navigationAction === NavigationAction.MAIN_MENU) {
-      clearSession();
-      return NavigationAction.MAIN_MENU;
-    }
+    const selectedService = selectedEntry.service;
+    const selectedIdentifier = selectedEntry.identifier;
 
     const {
       newIdentifier,
@@ -443,7 +325,16 @@ export const updatePassword = async (lines) => {
         name: "newIdentifier",
         message: "Enter new identifier (press Enter to keep current):",
         default: selectedIdentifier,
-        validate: (value) => validateInput(value, "identifier"),
+        validate: (value) => {
+          const inputValidation = validationTools.validateInput(
+            value,
+            "identifier"
+          );
+          if (inputValidation !== true) return inputValidation;
+
+          return true;
+        },
+        filter: (value) => value.trim(),
       },
       {
         type: "confirm",
@@ -488,7 +379,18 @@ export const updatePassword = async (lines) => {
         message: "Enter new password:",
         when: (answers) =>
           !answers.keepCurrentPassword && !answers.generatePassword,
-        validate: (value) => validateInput(value, "password"),
+        validate: (value) => {
+          const inputValidation = validationTools.validateInput(
+            value,
+            "password"
+          );
+          if (inputValidation !== true) return inputValidation;
+
+          const passwordValidation = validationTools.validatePassword(value);
+          if (passwordValidation !== true) return passwordValidation;
+
+          return true;
+        },
         mask: "*",
       },
       {
@@ -498,78 +400,121 @@ export const updatePassword = async (lines) => {
         when: (answers) =>
           !answers.keepCurrentPassword && !answers.generatePassword,
         validate: (value, answers) =>
-          checkPasswordMatch(value, answers.newPassword),
+          validationTools.checkPasswordMatch(value, answers.newPassword),
         mask: "*",
       },
     ]);
 
-    // Add final navigation prompt after all update information has been collected
-    const finalNavigationAction = await promptNavigation();
-    if (finalNavigationAction === NavigationAction.GO_BACK) {
-      return await updatePassword(lines); // Let the user update details again
-    } else if (finalNavigationAction === NavigationAction.MAIN_MENU) {
-      clearSession();
+    const navigationAction = await promptNavigation([
+      {
+        name: "Continue with current operation",
+        value: NavigationAction.CONTINUE,
+      },
+      { name: "Abort, return to main menu", value: NavigationAction.MAIN_MENU },
+    ]);
+
+    if (navigationAction === NavigationAction.MAIN_MENU) {
+      log(yellow("Aborting update. Returning to main menu." + NEWLINE));
       return NavigationAction.MAIN_MENU;
     }
 
-    const selectedLine = lines.find(
-      (line) =>
-        line.startsWith(selectedApp) && line.includes(selectedIdentifier)
-    );
-    if (!selectedLine || !selectedLine.includes(selectedIdentifier)) {
-      throw new PasswordManagerError(
-        "Selected application or identifier not found",
-        ERROR_CODES.FILE_NOT_FOUND
+    if (keepCurrentPassword && newIdentifier === selectedIdentifier) {
+      log(
+        yellow(
+          "Update cancelled. No changes were made. Returning to main menu..." +
+            NEWLINE
+        )
       );
-    }
-
-    const [app, currentIdentifier, currentPassword] = selectedLine.split(" - ");
-    const updatedIdentifier = newIdentifier || currentIdentifier;
-
-    // If the user wants to keep the current password and the identifier is the same, cancel the update
-    if (keepCurrentPassword && updatedIdentifier === currentIdentifier) {
-      log(yellow("Update cancelled. No changes were made.\n"));
       return false;
     }
 
-    // Determine the updated password based on user preferences
     const updatedPassword = keepCurrentPassword
-      ? currentPassword
+      ? decryptPassword(selectedEntry.password)
       : generatePassword
       ? generateRandomPassword(customLength ? passwordLength : 0)
       : newPassword;
 
     const encryptedPassword = encryptPassword(updatedPassword);
-    const updatedLine = `${app} - ${updatedIdentifier} - ${encryptedPassword}`;
-    // Replace the old line with the updated line
-    const updatedLines = lines.map((line) =>
-      line === selectedLine ? updatedLine : line
-    );
-    await writeLines(updatedLines);
+
+    if (
+      !validationTools.validatePasswordEntry({
+        service: selectedService,
+        identifier: newIdentifier,
+        password: encryptedPassword,
+        updatedAt: new Date().toISOString(),
+      })
+    ) {
+      throw new PasswordManagerError(
+        red("Invalid password entry structure"),
+        bold(red(ERROR_CODES.INVALID_PASSWORD_ENTRY))
+      );
+    }
+
+    await updatePasswordEntry({
+      service: selectedService,
+      identifier: newIdentifier,
+      password: encryptedPassword,
+      updatedAt: new Date().toISOString(),
+    });
 
     if (generatePassword) {
-      log(yellow(`Generated password: ${updatedPassword}\n`));
+      await hidePassword(updatedPassword, "Generated password");
     }
-    log(green("Password updated successfully!\n"));
-    // Prompt after a delay of 1 second
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    clearSession();
+
+    log(green("✔ Password entry updated successfully!" + NEWLINE));
+
     return true;
   } catch (error) {
     handleError(error);
-    return false;
   }
-};
+}
 
 /**
- * Searches for a password in the password manager by prompting the user for a search query (e.g. application name or identifier)
+ * Deletes a password entry from the vault.
+ *
+ * @returns {Promise<boolean|string>} True if the password was deleted successfully.
+ * false otherwise, or a NavigationAction if navigation was requested.
+ */
+export async function deletePassword(entry) {
+  try {
+    if (!(await authenticateUser())) {
+      return false;
+    }
+
+    const { confirmDelete } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "confirmDelete",
+        message: `Are you sure you want to delete the password for ${entry.service} (${entry.identifier})?`,
+        default: false,
+      },
+    ]);
+
+    if (confirmDelete) {
+      await deletePasswordEntry(entry);
+      log(green("✔ Password deleted successfully!" + NEWLINE));
+      return true;
+    } else {
+      log(yellow("Aborting deletion. Returning to main menu." + NEWLINE));
+      return NavigationAction.MAIN_MENU;
+    }
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+/**
+ * Searches for a password entry in the vault by prompting the user for a search query.
+ *
  * @returns {Promise<boolean|string>} True if the password was searched successfully,
  * false otherwise, or a NavigationAction if navigation was requested
  */
-export const searchPassword = async (lines) => {
+export async function searchPassword() {
   try {
-    if (lines.length === 0) {
-      log(yellow("No passwords stored yet.\n"));
+    const entries = await readPasswordEntries();
+
+    if (entries.length === 0) {
+      log(yellow("No passwords stored yet." + NEWLINE));
       return false;
     }
 
@@ -577,26 +522,69 @@ export const searchPassword = async (lines) => {
       {
         type: "input",
         name: "searchQuery",
-        message: "Enter a search query (e.g. application name or identifier):",
-        validate: (value) => validateInput(value, "search query"),
+        message: "Enter a search query (e.g. service name or identifier):",
+        validate: (value) =>
+          validationTools.validateInput(value, "search query"),
         filter: (value) => value.trim().toLowerCase(),
       },
     ]);
 
-    const results = lines.filter((line) =>
-      line.toLowerCase().includes(searchQuery.toLowerCase())
+    const results = entries.filter(
+      (entry) =>
+        entry.service.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        entry.identifier.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     if (results.length === 0) {
-      log(yellow("No results found.\n"));
+      log(yellow("No results found." + NEWLINE));
       return false;
     }
 
-    log(green(`Found ${results.length} results.\n`));
+    log(
+      green(
+        `Found ${results.length} result${
+          results.length === 1 ? "" : "s"
+        }.${NEWLINE}`
+      )
+    );
 
-    return await viewPassword(results);
+    const { viewResults } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "viewResults",
+        message: "Would you like to view the results?",
+        default: true,
+      },
+    ]);
+
+    if (viewResults) {
+      return await viewPassword(results);
+    }
+
+    return true;
   } catch (error) {
     handleError(error);
-    return false;
   }
-};
+}
+
+/**
+ * Hides the password from the console after it is generated.
+ *
+ * @param {string} password - The password to hide.
+ * @returns {Promise<void>}
+ */
+async function hidePassword(password, message) {
+  const hiddenPassword = "*".repeat(Math.floor(Math.random() * 9) + 8);
+  process.stdout.write(`${message}: ${yellow(password)}${NEWLINE}`);
+
+  const spinner = ora(`Hiding password in 5 seconds...`).start();
+  spinner.color = "yellow";
+
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  spinner.stop();
+
+  process.stdout.moveCursor(0, -1);
+  process.stdout.clearLine(0);
+  process.stdout.write(`${message}: ${yellow(hiddenPassword)}${NEWLINE}`);
+  process.stdout.moveCursor(0, 1);
+}
