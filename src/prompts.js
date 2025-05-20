@@ -21,10 +21,14 @@ export async function promptIdentifier(service, entries) {
         );
         if (inputValidation !== true) return inputValidation;
 
-        if (entries.some(entry => entry.identifier === value.trim())) {
-          return red("This identifier already exists for this service. Please try again with a different identifier or update the existing entry.");
-        }
-        
+        const identifierValidation =
+          validationTools.validateNonDuplicateIdentifier(
+            value.trim(),
+            service,
+            entries
+          );
+        if (identifierValidation !== true) return identifierValidation;
+
         return true;
       },
     },
