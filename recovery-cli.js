@@ -7,6 +7,11 @@ import inquirer from 'inquirer';
  * Emergency recovery CLI tool
  * This tool helps recover the password manager data in case of critical errors
  */
+/**
+ * Runs the emergency recovery CLI tool for the password manager.
+ * Prompts the user for confirmation and attempts to recover password data.
+ * @returns {Promise<void>}
+ */
 async function runRecovery() {
   console.log(chalk.cyan('\n========================================='));
   console.log(chalk.cyan('Password Manager Emergency Recovery Tool'));

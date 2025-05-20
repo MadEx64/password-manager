@@ -5,7 +5,6 @@ import { PASSWORD_STRENGTH } from "./constants.js";
  * Handles prompt input field validation.
  * @param {string} input - The input to validate.
  * @param {string} fieldName - The name of the field to validate.
- * @param {Object[]} entries - The password entries to validate against.
  * @returns {boolean|string} True if the input is valid, otherwise an error message.
  * @description This function validates the input and returns an error message if the input is invalid (e.g. empty input).
  * If the input is an identifier, it will also validate that it is not already used in the password entries.
