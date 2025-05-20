@@ -1,96 +1,78 @@
-import chalk from 'chalk';
-import { ERROR_CODES } from './constants.js';
-const red = chalk.red;
+import { error as errorLogger, log, yellow } from './logger.js';
+import { ERROR_CODES, isTestMode } from './constants.js';
 
 /**
- * Custom error class for the password manager
+ * Custom error class for the password manager.
+ * 
+ * Handles error messages and codes.
  * @extends {Error}
  * @description This class is used to create custom errors for the password manager.
+ * @property {string} code - The error code.
+ * @property {string} message - The error message.
  */
-export class PasswordManagerError extends Error {
+class PasswordManagerError extends Error {
   /**
-   * Creates a new PasswordManagerError
-   * @param {string} message - The error message
-   * @param {string} code - The error code
+   * Creates a new PasswordManagerError.
+   * @param {string} message - The error message.
+   * @param {string} code - The error code.
    */
   constructor(message, code) {
     super(message);
-    this.name = 'Error';
     this.code = code;
+    this.name = 'PasswordManagerError';
   }
 }
 
 /**
- * Handles an error and logs it to the console
- * @param {Error} error - The error to handle
- * @returns {void} If the error is a PasswordManagerError, it logs the error to the console and exits the program
+ * Prints a helpful suggestion based on the error code.
+ * @param {string} code - The error code.
  */
-export const handleError = (error) => {
+function printSuggestion(code) {
+  switch (code) {
+    case ERROR_CODES.AUTHENTICATION_FAILED:
+      log(yellow('Check your master password or try the recovery tool.'));
+      break;
+    case ERROR_CODES.FILE_NOT_FOUND:
+      log(yellow('Ensure the required file exists or restore from backup.'));
+      break;
+    case ERROR_CODES.PERMISSION_DENIED:
+      log(yellow('Check your file permissions or try running as administrator.'));
+      break;
+    case ERROR_CODES.DUPLICATE_IDENTIFIER:
+      log(yellow('This identifier already exists. Update existing entry instead.'));
+      break;
+    case ERROR_CODES.DECRYPTION_FAILED:
+      log(yellow('The file could not be decrypted. Check your master password or recovery key.'));
+      break;
+    case ERROR_CODES.ENCRYPTION_FAILED:
+      log(yellow('The file could not be encrypted. Check your master password or recovery key.'));
+      break;
+    case ERROR_CODES.MIGRATION_FAILED:
+      log(yellow('Migration failed. Try restoring from a backup or import from a different source.'));
+      break;
+    case ERROR_CODES.FILE_CORRUPTED:
+      log(yellow('The file appears corrupted. Try restoring from a backup or import from a different source.'));
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * Handles an error, logs it, prints suggestions, and exits if not in test mode.
+ * @param {Error} error - The error to handle.
+ */
+function handleError(error) {
   if (error instanceof PasswordManagerError) {
-    console.log(red(`\n ✗ Error (${error.code}): ${error.message}\n`));
-  } else if (error.code === ERROR_CODES.FILE_NOT_FOUND) {
-    console.log(red(`\n ✗ Error (${error.code}): ${error.message}\n`));
-  } else if (error.code === ERROR_CODES.PERMISSION_DENIED) {
-    console.log(red(`\n ✗ Error (${error.code}): ${error.message}\n`));
+    errorLogger(`[${error.code}] ${error.message}`);
+    printSuggestion(error.code);
   } else {
-    console.log(red(`\n ✗ Error (${error.code}): ${error.message}\n`));
+    errorLogger(error.message);
   }
+  if (!isTestMode) process.exit(1);
+}
 
-  // Exit the program
-  console.log(red('Exiting...'));
-  process.exit(1);
-};
-
-/**
- * Validates an input (e.g. empty input)
- * @param {string} input - The input to validate
- * @param {string} fieldName - The name of the field to validate
- * @returns {boolean | string} True if the input is valid, error message otherwise
- * @description This function validates the input and returns an error message if the input is invalid (e.g. empty input)
- */
-export const validateInput = (input, fieldName) => {
-  if (!input || input.trim() === '') {
-    throw new PasswordManagerError(
-      `Please enter a valid ${fieldName}.`,
-      ERROR_CODES.INVALID_INPUT
-    );
-  }
-  return true;
-};
-
-/**
- * Validates a password (e.g. password length, password characters)
- * @param {string} password
- * @returns {boolean | string} True if the password is valid, error message otherwise
- * @description This function validates the password and returns an error message if the password is invalid.
- */
-export const validatePassword = (password) => {
-  if (password.length < 8) {
-    return "✗ Password must be at least 8 characters long. Please try again.";
-  }
-  if (!/[A-Z]/.test(password)) {
-    return "✗ Password must contain at least one uppercase letter. Please try again.";
-  }
-  if (!/[0-9]/.test(password)) {
-    return "✗ Password must contain at least one number. Please try again.";
-  }
-  if (!/[-.!@#$%^&*_+=/?]/.test(password)) {
-    return "✗ Password must contain at least one special character. Please try again.";
-  }
-
-  // If all checks pass, return true
-  return true;
-};
-
-/**
- * Checks if the password and the password to check match
- * @param {string} password - The password to check
- * @param {string} passwordToCheck - The password to check against
- * @returns {boolean} True if the passwords match, otherwise an error message
- */
-export const checkPasswordMatch = (password, passwordToCheck) => {
-  if (password !== passwordToCheck) {
-    return "✗ Passwords do not match. Please try again.";
-  }
-  return true;
-};
+export {
+  handleError,
+  PasswordManagerError
+}

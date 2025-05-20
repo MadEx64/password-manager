@@ -1,10 +1,5 @@
 import inquirer from "inquirer";
-import chalk from "chalk";
-
-// Chalk variables
-const log = console.log;
-const green = chalk.green;
-const yellow = chalk.yellow;
+import { log, green, yellow } from "./logger.js";
 
 /**
  * Navigation status flags
@@ -19,17 +14,17 @@ const NavigationAction = {
  * Prompt the user for navigation options
  * @returns {Promise<string>} The navigation action chosen by the user
  */
-export const promptNavigation = async () => {
+export const promptNavigation = async (navigationOptions = [
+  { name: "Continue with current operation", value: NavigationAction.CONTINUE },
+  { name: "Go back to previous step", value: NavigationAction.GO_BACK },
+  { name: "Abort, return to main menu", value: NavigationAction.MAIN_MENU }
+]) => {
   const { action } = await inquirer.prompt([
     {
       type: "list",
       name: "action",
       message: "What would you like to do next?",
-      choices: [
-        { name: "Continue with current operation", value: NavigationAction.CONTINUE },
-        { name: "Go back to previous step", value: NavigationAction.GO_BACK },
-        { name: "Abort, return to main menu", value: NavigationAction.MAIN_MENU }
-      ],
+      choices: navigationOptions,
     },
   ]);
 
@@ -50,7 +45,7 @@ export const handleNavigation = async (action) => {
       return true;
     case NavigationAction.MAIN_MENU:
       log(green("\nReturning to main menu...\n"));
-      return true;
+      return false;
     default:
       return false;
   }
