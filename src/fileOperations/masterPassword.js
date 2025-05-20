@@ -4,7 +4,8 @@ import { PasswordManagerError } from "../errorHandler.js";
 import { readFileAsync, writeFileAsync } from "./index.js";
 import { isFileEncrypted, decryptFile, encryptFile } from "../utils.js";
 import { encryptPassword } from "../utils.js";
-import { acquireLock, releaseLock, generateRecoveryKey } from "../fileLock.js";
+import { acquireLock, releaseLock } from "../fileLock.js";
+import { generateRecoveryKey } from "../recovery.js";
 import { createChecksum, verifyChecksum } from "./checksum.js";
 import { log, yellow, red, bold } from "../logger.js";
 
