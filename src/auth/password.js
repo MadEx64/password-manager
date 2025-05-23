@@ -2,11 +2,11 @@ import {
   readMasterPassword,
   writeMasterPassword,
 } from "../fileOperations/index.js";
-import { decryptPassword, encryptPassword } from "../utils.js";
+import { decryptPassword } from "../utils.js";
 import { promptMasterPassword, promptNewPassword } from "./prompts.js";
 import { NavigationAction, promptNavigation } from "../navigation.js";
 import { PasswordManagerError } from "../errorHandler.js";
-import { log, red, green, bold, yellow } from "../logger.js";
+import { log, red, green, bold } from "../logger.js";
 import { clearSession } from "./session.js";
 import { ERROR_CODES, NEWLINE } from "../constants.js";
 
@@ -19,8 +19,7 @@ import { ERROR_CODES, NEWLINE } from "../constants.js";
 export async function validateMasterPassword(inputPassword) {
   try {
     const storedPassword = await readMasterPassword();
-    const decryptedPassword = decryptPassword(storedPassword);
-    return inputPassword === decryptedPassword;
+    return inputPassword === decryptPassword(storedPassword);
   } catch (error) {
     throw new PasswordManagerError(
       red(error.message),
@@ -36,7 +35,7 @@ export async function validateMasterPassword(inputPassword) {
  *
  * @returns {Promise<boolean>} True if the password is updated, false otherwise.
  */
-export async function handlePasswordUpdate() {
+export async function handleMasterPasswordUpdate() {
   try {
     const MAX_ATTEMPTS = 3;
     let attempts = 0;
@@ -68,13 +67,13 @@ export async function handlePasswordUpdate() {
 
     const navigationAction = await promptNavigation();
     if (navigationAction === NavigationAction.GO_BACK) {
-      return await handlePasswordUpdate();
+      return await handleMasterPasswordUpdate();
     } else if (navigationAction === NavigationAction.MAIN_MENU) {
       log(yellow("Aborting..."));
       return NavigationAction.MAIN_MENU;
     }
 
-    await writeMasterPassword(encryptPassword(newPassword));
+    await writeMasterPassword(newPassword);
 
     clearSession();
     log(green("✓ Master password updated successfully!" + NEWLINE));

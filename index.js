@@ -1,7 +1,7 @@
 import inquirer from "inquirer";
 import { log, green, yellow, red, bold } from "./src/logger.js";
 import { checkPasswordVaultIntegrity, handleBackup } from "./src/fileOperations/index.js";
-import { authenticateUser, handlePasswordUpdate } from "./src/auth/index.js";
+import { authenticateUser, handleMasterPasswordUpdate } from "./src/auth/index.js";
 import {
   addPassword,
   viewPassword,
@@ -82,7 +82,7 @@ async function managePasswords() {
           result = await viewPassword();
           break;
         case "Update master password":
-          result = await handlePasswordUpdate();
+          result = await handleMasterPasswordUpdate();
           break;
         case "Search password":
           result = await searchPassword();
@@ -116,7 +116,7 @@ async function managePasswords() {
   } catch (error) {
     throw new PasswordManagerError(
       red(error.message),
-      bold(red(ERROR_CODES.INTERNAL_ERROR))
+      ERROR_CODES.INTERNAL_ERROR
     );
   }
 }
