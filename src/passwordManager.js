@@ -69,12 +69,12 @@ export async function addPassword() {
         {
           type: "number",
           name: "passwordLength",
-          message: "Enter desired password length (minimum 8):",
-          default: 12,
+          message: "Enter desired password length (minimum 8, maximum 32):",
+          default: 16,
           when: (answers) => answers.generatePassword && answers.customLength,
           validate: (value) => {
-            if (isNaN(value) || !Number.isInteger(value) || value < 8) {
-              return "Please enter a valid number of at least 8";
+            if (isNaN(value) || !Number.isInteger(value) || value < 8 || value > 32) {
+              return "Please enter a valid number between 8 and 32";
             }
             return true;
           },
@@ -107,7 +107,7 @@ export async function addPassword() {
       }
 
       const password = answers.generatePassword
-        ? generateRandomPassword(answers.passwordLength || 12)
+        ? generateRandomPassword(answers.passwordLength)
         : answers.userPassword;
 
       const encryptedPassword = encryptPassword(password);
