@@ -1,18 +1,124 @@
-import { generateRandomPassword, encryptPassword, decryptPassword } from '../../src/utils.js';
+import { generateRandomPassword, encryptPassword, decryptPassword, encryptFile, decryptFile, isFileEncrypted } from '../../src/utils.js';
+import { PasswordManagerError } from '../../src/errorHandler.js';
 
 describe('Utils', () => {
   describe('generateRandomPassword', () => {
-    test('should generate a password between 8 and 16 characters', () => {
+    test('should generate a password between 12 and 16 characters by default', () => {
       const password = generateRandomPassword();
-      expect(password.length).toBeGreaterThanOrEqual(8);
+      expect(password.length).toBeGreaterThanOrEqual(12);
       expect(password.length).toBeLessThanOrEqual(16);
     });
 
-    test('should generate a password with required character types', () => {
-      const password = generateRandomPassword();
-      expect(password).toMatch(/[A-Z]/); // Uppercase
-      expect(password).toMatch(/[0-9]/); // Number
-      expect(password).toMatch(/[-.!@#$%^&*_+=/?]/); // Special character
+    test('should generate a password with specified length when valid', () => {
+      const length = 20;
+      const password = generateRandomPassword(length);
+      expect(password.length).toBe(length);
+    });
+
+    test('should respect minimum and maximum length bounds', () => {
+      // Test minimum valid length
+      const minPassword = generateRandomPassword(8);
+      expect(minPassword.length).toBe(8);
+
+      // Test maximum valid length
+      const maxPassword = generateRandomPassword(32);
+      expect(maxPassword.length).toBe(32);
+    });
+
+    test('should use default random length for invalid inputs', () => {
+      // Test length too small
+      const tooSmallPassword = generateRandomPassword(5);
+      expect(tooSmallPassword.length).toBeGreaterThanOrEqual(12);
+      expect(tooSmallPassword.length).toBeLessThanOrEqual(16);
+
+      // Test length too large
+      const tooLargePassword = generateRandomPassword(50);
+      expect(tooLargePassword.length).toBeGreaterThanOrEqual(12);
+      expect(tooLargePassword.length).toBeLessThanOrEqual(16);
+
+      // Test zero length
+      const zeroLengthPassword = generateRandomPassword(0);
+      expect(zeroLengthPassword.length).toBeGreaterThanOrEqual(12);
+      expect(zeroLengthPassword.length).toBeLessThanOrEqual(16);
+    });
+
+    test('should guarantee all required character types', () => {
+      // Test multiple passwords to ensure consistency
+      for (let i = 0; i < 10; i++) {
+        const password = generateRandomPassword(12);
+        
+        // Check for lowercase letter
+        expect(password).toMatch(/[a-z]/);
+        
+        // Check for uppercase letter
+        expect(password).toMatch(/[A-Z]/);
+        
+        // Check for number
+        expect(password).toMatch(/[0-9]/);
+        
+        // Check for special character
+        expect(password).toMatch(/[-.!@#$%^&*_+=/?]/);
+      }
+    });
+
+    test('should generate different passwords each time', () => {
+      const passwords = new Set();
+      
+      // Generate 50 passwords and ensure they're all different
+      for (let i = 0; i < 50; i++) {
+        const password = generateRandomPassword(15);
+        expect(passwords.has(password)).toBe(false);
+        passwords.add(password);
+      }
+      
+      expect(passwords.size).toBe(50);
+    });
+
+    test('should handle edge case lengths properly', () => {
+      // Test minimum possible length that satisfies all requirements
+      const minRequiredPassword = generateRandomPassword(4);
+      expect(minRequiredPassword.length).toBeGreaterThanOrEqual(12); // Should use default since 4 is invalid
+      
+      // Test that passwords at boundary lengths work correctly
+      const boundaryPassword = generateRandomPassword(8);
+      expect(boundaryPassword.length).toBe(8);
+      expect(boundaryPassword).toMatch(/[a-z]/);
+      expect(boundaryPassword).toMatch(/[A-Z]/);
+      expect(boundaryPassword).toMatch(/[0-9]/);
+      expect(boundaryPassword).toMatch(/[-.!@#$%^&*_+=/?]/);
+    });
+
+    test('should only contain valid characters', () => {
+      const validChars = /^[a-zA-Z0-9\-.!@#$%^&*_+=/?]+$/;
+      
+      for (let i = 0; i < 10; i++) {
+        const password = generateRandomPassword(20);
+        expect(password).toMatch(validChars);
+      }
+    });
+
+    test('should maintain character distribution for longer passwords', () => {
+      const longPassword = generateRandomPassword(32);
+      
+      // For longer passwords, we should still have all character types
+      expect(longPassword).toMatch(/[a-z]/);
+      expect(longPassword).toMatch(/[A-Z]/);
+      expect(longPassword).toMatch(/[0-9]/);
+      expect(longPassword).toMatch(/[-.!@#$%^&*_+=/?]/);
+      
+      // And the length should be exactly what we requested
+      expect(longPassword.length).toBe(32);
+    });
+
+    test('should handle non-integer and negative lengths gracefully', () => {
+      // Test floating point number
+      const floatPassword = generateRandomPassword(10.5);
+      expect(floatPassword.length).toBe(10);
+
+      // Test negative number
+      const negativePassword = generateRandomPassword(-5);
+      expect(negativePassword.length).toBeGreaterThanOrEqual(12);
+      expect(negativePassword.length).toBeLessThanOrEqual(16);
     });
   });
 
@@ -38,4 +144,46 @@ describe('Utils', () => {
       expect(decrypted).toBe('');
     });
   });
-}); 
+
+  describe('encryptFile and decryptFile', () => {
+    const testPassword = 'TestPassword123!';
+    const testContent = 'TestContent123!';
+
+    test('should encrypt and decrypt file correctly', () => {
+      const encrypted = encryptFile(testContent, testPassword);
+      const decrypted = decryptFile(encrypted, testPassword); 
+
+      expect(decrypted).toBe(testContent);
+    });
+
+    test('should throw an error when decrypting with wrong master password', () => {
+      const wrongMasterPassword = 'WrongPassword123!';
+      const encrypted = encryptFile(testContent, testPassword);
+
+      try {
+        decryptFile(encrypted, wrongMasterPassword);
+        throw new Error('decryptFile should have thrown a PasswordManagerError but did not.');
+      } catch (error) {
+        expect(error).toBeInstanceOf(PasswordManagerError);
+        expect(error.message).toMatch(/decryption failed|data integrity check failed/i);
+      }
+    });
+  });
+
+  describe('isFileEncrypted', () => {
+    test('should return true for an encrypted file buffer', () => {
+      const encryptedBuffer = Buffer.from([1, 2, 3, 4, 5]); // Starts with version byte 1
+      expect(isFileEncrypted(encryptedBuffer)).toBe(true);
+    });
+
+    test('should return false for a non-encrypted file buffer', () => {
+      const nonEncryptedBuffer = Buffer.from([0, 2, 3, 4, 5]); // Does not start with version byte 1
+      expect(isFileEncrypted(nonEncryptedBuffer)).toBe(false);
+    });
+
+    test('should return false for an empty buffer', () => {
+      const emptyBuffer = Buffer.from([]);
+      expect(isFileEncrypted(emptyBuffer)).toBe(false);
+    });
+  });
+});
