@@ -7,6 +7,7 @@ import { NEWLINE } from "./constants.js";
 import validationTools from "./validation.js";
 import { readPasswordEntries, writePasswordEntries } from "./fileOperations/index.js";
 import { green, yellow, red, log } from "./logger.js";
+import { decryptPassword } from "./utils.js";
 
 /**
  * Exports all passwords to a JSON file.
@@ -29,24 +30,58 @@ export async function exportPasswordsToJSON() {
       new Date().toISOString().split("T")[0]
     }.json`;
 
-    const { exportPath } = await inquirer.prompt([
-      {
-        type: "input",
-        name: "exportPath",
-        message:
-          "Enter the path to export passwords (e.g. ./passwords-export.json):",
-        default: defaultExportPath,
-        validate: (value) => {
-          if (value.trim() === "") {
-            return "Path cannot be empty.";
-          }
-          if (!value.endsWith(".json")) {
-            return "File must have a .json extension.";
-          }
-          return true;
+    let exportPath;
+    let shouldProceed = false;
+
+    while (!shouldProceed) {
+      const pathPrompt = await inquirer.prompt([
+        {
+          type: "input",
+          name: "exportPath",
+          message:
+            "Enter the path to export passwords (e.g. ./passwords-export.json):",
+          default: defaultExportPath,
+          validate: (value) => {
+            if (value.trim() === "") {
+              return "Path cannot be empty.";
+            }
+            if (!value.endsWith(".json")) {
+              return "File must have a .json extension.";
+            }
+            return true;
+          },
         },
-      },
-    ]);
+      ]);
+
+      exportPath = pathPrompt.exportPath;
+
+      try {
+        await fs.promises.access(exportPath);
+        const { action } = await inquirer.prompt([
+          {
+            type: "list",
+            name: "action",
+            message: `File "${exportPath}" already exists. What would you like to do?`,
+            choices: [
+              "Replace existing file",
+              "Choose different path",
+              "Cancel export"
+            ],
+          },
+        ]);
+
+        if (action === "Replace existing file") {
+          shouldProceed = true;
+        } else if (action === "Choose different path") {
+          continue;
+        } else if (action === "Cancel export") {
+          log(yellow("Export cancelled." + NEWLINE));
+          return false;
+        }
+      } catch (error) {
+        shouldProceed = true;
+      }
+    }
 
     const data = entries
       .map((entry) => {
@@ -54,7 +89,7 @@ export async function exportPasswordsToJSON() {
           return {
             service: entry.service,
             identifier: entry.identifier,
-            password: entry.password,
+            password: decryptPassword(entry.password),
             createdAt: entry.createdAt,
             updatedAt: entry.updatedAt,
           };
@@ -264,24 +299,72 @@ export async function exportPasswordsToCSV() {
       return false;
     }
 
-    const { exportPath } = await inquirer.prompt([
-      {
-        type: "input",
-        name: "exportPath",
-        message:
-          "Enter the path to export passwords (e.g. ./passwords-export.csv):",
-        default: "./passwords-export.csv",
-        validate: (value) => validationTools.validateNonEmptyInput(value),
-      },
-    ]);
+    const defaultExportPath = `${os.homedir()}/passwords-export-${
+      new Date().toISOString().split("T")[0]
+    }.csv`;
+
+    let exportPath;
+    let shouldProceed = false;
+
+    while (!shouldProceed) {
+      const pathPrompt = await inquirer.prompt([
+        {
+          type: "input",
+          name: "exportPath",
+          message:
+            "Enter the path to export passwords (e.g. ./passwords-export.csv):",
+          default: defaultExportPath,
+          validate: (value) => {
+            if (value.trim() === "") {
+              return "Path cannot be empty.";
+            }
+            if (!value.endsWith(".csv")) {
+              return "File must have a .csv extension.";
+            }
+            return true;
+          },
+        },
+      ]);
+
+      exportPath = pathPrompt.exportPath;
+
+      try {
+        await fs.promises.access(exportPath);
+        const { action } = await inquirer.prompt([
+          {
+            type: "list",
+            name: "action",
+            message: `File "${exportPath}" already exists. What would you like to do?`,
+            choices: [
+              "Replace existing file",
+              "Choose different path",
+              "Cancel export"
+            ],
+          },
+        ]);
+
+        if (action === "Replace existing file") {
+          shouldProceed = true;
+        } else if (action === "Choose different path") {
+          continue;
+        } else if (action === "Cancel export") {
+          log(yellow("Export cancelled." + NEWLINE));
+          return false;
+        }
+      } catch (error) {
+        shouldProceed = true;
+      }
+    }
 
     const data = entries.map((entry) => ({
       service: entry.service,
       identifier: entry.identifier,
-      password: entry.password,
+      password: decryptPassword(entry.password),
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     }));
+
+    const csvHeader = "service,identifier,password,createdAt,updatedAt";
 
     const csvContent = data
       .map(
@@ -290,7 +373,7 @@ export async function exportPasswordsToCSV() {
       )
       .join(NEWLINE);
 
-    await fs.promises.writeFile(exportPath, csvContent, "utf8");
+    await fs.promises.writeFile(exportPath, csvHeader + NEWLINE + csvContent, "utf8");
 
     log(green(`✔ Passwords exported to ${exportPath}`));
     log(
