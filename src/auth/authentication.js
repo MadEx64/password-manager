@@ -2,20 +2,21 @@ import {
   updateSession,
   isSessionValid,
   clearSession,
-  sessionState,
+  getSessionState,
 } from "./session.js";
 import { validateMasterPassword } from "./password.js";
 import { promptMasterPassword, promptNewPassword } from "./prompts.js";
-import {
-  readMasterPassword,
-  writeMasterPassword,
-} from "../fileOperations/index.js";
 import { PasswordManagerError } from "../errorHandler.js";
-import { log, blue, green, red, bold } from "../logger.js";
+import { log, blue, green, red, bold, yellow } from "../logger.js";
 import { ERROR_CODES, NEWLINE } from "../constants.js";
+import { 
+  isAuthSystemInitialized, 
+  setupMasterPassword as secureSetupMasterPassword,
+  deriveAuthenticationKey 
+} from "./secureAuth.js";
 
 /**
- * Authenticates the user with the master password.
+ * Authenticates the user with the master password using the enhanced security system.
  *
  * If the master password is not set, it will prompt the user to set it.
  * If the master password is set, it will validate the user's input against the master password and update the session state if the master password is validated.
@@ -24,15 +25,20 @@ import { ERROR_CODES, NEWLINE } from "../constants.js";
  */
 export async function authenticateUser() {
   try {
-    if (isSessionValid(sessionState)) {
+    if (isSessionValid(getSessionState())) {
       return true;
     } else {
-      clearSession(sessionState);
+      clearSession(getSessionState());
     }
 
-    const storedMasterPassword = await readMasterPassword();
-    if (storedMasterPassword === "") {
-      return await handleNoStoredMasterPassword();
+    // Check if secure auth system is initialized, if not set it up
+    if (!(await isAuthSystemInitialized())) {
+      const result = await handleNoStoredMasterPassword();
+      if (result) {
+        return true;
+      } else {
+        return false;
+      }
     }
 
     const MAX_ATTEMPTS = 3;
@@ -43,7 +49,7 @@ export async function authenticateUser() {
       const isValid = await validateMasterPassword(password);
 
       if (isValid) {
-        loginUser();
+        await loginUser(password);
         return true;
       }
 
@@ -62,12 +68,15 @@ export async function authenticateUser() {
 
 /**
  * Updates the session state and logs a success message.
+ * Also caches the master password and encryption key for the session.
  *
+ * @param {string} masterPassword - The master password to cache.
  * @returns {Promise<void>}
  */
-function loginUser() {
-  updateSession(sessionState);
-  log(green("Access granted!" + NEWLINE));
+async function loginUser(masterPassword) {
+  const encryptionKey = await deriveAuthenticationKey(masterPassword);
+  updateSession(getSessionState(), masterPassword, encryptionKey);
+  log(green("✓ Access granted!" + NEWLINE));
 }
 
 /**
@@ -75,6 +84,7 @@ function loginUser() {
  *
  * @param {number} attempts - The number of failed attempts.
  * @param {number} MAX_ATTEMPTS - The maximum number of allowed attempts.
+ * @throws {PasswordManagerError} If maximum attempts are reached.
  */
 function handleFailedLoginAttempt(attempts, MAX_ATTEMPTS) {
   if (attempts >= MAX_ATTEMPTS) {
@@ -98,18 +108,29 @@ function handleFailedLoginAttempt(attempts, MAX_ATTEMPTS) {
 }
 
 /**
- * Handles the case when no master password is stored.
- * Prompts the user to set a new master password, writes it, and logs the user in.
+ * Handles the case when no master password is stored. 
+ * Sets up a new master password using the enhanced security system.
  *
  * @returns {Promise<boolean>} True if the master password is set successfully.
  */
 async function handleNoStoredMasterPassword() {
-  log(
-    blue(`No master password found. Setting up master password...${NEWLINE}`)
-  );
-  const newPassword = await promptNewPassword();
-  await writeMasterPassword(newPassword);
-  log(green("✓ Master password set successfully!" + NEWLINE));
-  loginUser();
-  return true;
+  try {
+    log(blue("Welcome! You will be asked to set a master password to access the application."));
+    log(yellow("⚠ This will also create a secure application key stored in your system's credential store. This is essential for the application to work."));
+    
+    const newPassword = await promptNewPassword();
+    await secureSetupMasterPassword(newPassword);
+    
+    log(green("✓ Master password set successfully." + NEWLINE));
+    log(green("🔐 Your credentials are now securely stored in the system credential store."));
+    log(green("You can now access the application with your master password."));
+    
+    await loginUser(newPassword);
+    return true;
+  } catch (error) {
+    throw new PasswordManagerError(
+      red("Failed to setup master password: " + error.message),
+      bold(red(ERROR_CODES.INTERNAL_ERROR))
+    );
+  }
 }
