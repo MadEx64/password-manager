@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import { createHash } from "../encryption/index.js";
 
 /**
  * Creates a checksum for the given data.
@@ -7,7 +7,7 @@ import crypto from "crypto";
  * @description This function creates a checksum for the given data using the SHA-256 algorithm.
  */
 export function createChecksum(data) {
-  return crypto.createHash("sha256").update(data).digest("hex");
+  return createHash(data);
 };
 
 /**
