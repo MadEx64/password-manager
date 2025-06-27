@@ -69,7 +69,6 @@ export const PASSWORD_STRENGTH = {
  * @property {string} DECRYPTION_FAILED - Decryption failed.
  * @property {string} ENCRYPTION_FAILED - Encryption failed.
  * @property {string} RECOVERY_KEY_GENERATION_FAILED - Recovery key generation failed.
- * @property {string} MASTER_PASSWORD_KEY_GENERATION_FAILED - Master password key generation failed.
  * @property {string} APP_SECRET_KEY_GENERATION_FAILED - Application secret key generation failed.
  * @property {string} AUTH_KEY_DERIVATION_FAILED - Authentication key derivation failed.
  * @property {string} MIGRATION_FAILED - Migration failed.
@@ -88,7 +87,6 @@ export const ERROR_CODES = {
   DECRYPTION_FAILED: 'DECRYPTION_FAILED',
   ENCRYPTION_FAILED: 'ENCRYPTION_FAILED',
   RECOVERY_KEY_GENERATION_FAILED: 'RECOVERY_KEY_GENERATION_FAILED',
-  MASTER_PASSWORD_KEY_GENERATION_FAILED: 'MASTER_PASSWORD_KEY_GENERATION_FAILED',
   APP_SECRET_KEY_GENERATION_FAILED: 'APP_SECRET_KEY_GENERATION_FAILED',
   AUTH_KEY_DERIVATION_FAILED: 'AUTH_KEY_DERIVATION_FAILED',
   MIGRATION_FAILED: 'MIGRATION_FAILED',

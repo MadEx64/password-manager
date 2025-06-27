@@ -13,66 +13,6 @@ import { red, bold } from "../logger.js";
 // ------------------------------------------------------------
 
 /**
- * Derives a persistent key for encryption/decryption from the master password.
- * This ensures the same key is used across application restarts.
- * @param {string} masterPassword - The master password to derive the key from.
- * @returns {Promise<Buffer>} The derived key for encryption/decryption.
- */
-export async function generateEncryptionKey(masterPassword) {
-  try {
-    const { deriveAuthenticationKey, isAuthSystemInitialized } = await import(
-      "../auth/secureAuth.js"
-    );
-
-    if (await isAuthSystemInitialized()) {
-      return await deriveAuthenticationKey(masterPassword);
-    }
-
-    // Fallback to the legacy system for backward compatibility during migration
-    const fs = await import("fs");
-    const { PATHS } = await import("../constants.js");
-
-    if (fs.default.existsSync(PATHS.MASTER_PASSWORD_SALT)) {
-      const salt = await fs.promises.readFile(
-        PATHS.MASTER_PASSWORD_SALT,
-        "utf8"
-      );
-
-      // Validate the salt
-      if (salt && salt.length >= 64 && /^[a-f0-9]+$/i.test(salt)) {
-        // Derive a key from the salt for password encryption
-        const key = crypto.pbkdf2Sync(
-          masterPassword,
-          salt,
-          100000,
-          32,
-          "sha256"
-        );
-        return key;
-      }
-    }
-
-    // Fallback: create a basic key from master password with fixed salt
-    // This is not ideal but better than a random key that changes every restart
-    const fallbackKey = crypto.pbkdf2Sync(
-      masterPassword,
-      "FALLBACK_ENCRYPTION_SALT_2024",
-      100000,
-      32,
-      "sha256"
-    );
-    return fallbackKey;
-  } catch (error) {
-    // Last resort fallback
-    const emergencyKey = crypto
-      .createHash("sha256")
-      .update("EMERGENCY_PASSWORD_ENCRYPTION_KEY_" + masterPassword)
-      .digest();
-    return emergencyKey;
-  }
-}
-
-/**
  * Encrypts a password using AES-256-GCM mode with a derived key.
  *
  * @param {string} password - The password to encrypt.
