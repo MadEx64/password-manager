@@ -1,25 +1,22 @@
-import {
-  readMasterPassword,
-  writeMasterPassword,
-} from "../fileOperations/index.js";
-import { decryptPassword } from "../utils.js";
 import { promptMasterPassword, promptNewPassword } from "./prompts.js";
 import { NavigationAction, promptNavigation } from "../navigation.js";
 import { PasswordManagerError } from "../errorHandler.js";
-import { log, red, green, bold } from "../logger.js";
-import { clearSession } from "./session.js";
+import { log, red, green, bold, yellow } from "../logger.js";
+import { clearSession, getSessionState } from "./session.js";
 import { ERROR_CODES, NEWLINE } from "../constants.js";
+import { 
+  verifyMasterPassword as secureVerifyMasterPassword,
+  updateMasterPassword as secureUpdateMasterPassword
+} from "./secureAuth.js";
 
 /**
  * Validates the user's input against the master password.
- *
  * @param {string} inputPassword - The password to validate.
  * @returns {Promise<boolean>} True if the password is valid, false otherwise.
  */
 export async function validateMasterPassword(inputPassword) {
   try {
-    const storedPassword = await readMasterPassword();
-    return inputPassword === decryptPassword(storedPassword);
+    return await secureVerifyMasterPassword(inputPassword);
   } catch (error) {
     throw new PasswordManagerError(
       red(error.message),
@@ -30,9 +27,7 @@ export async function validateMasterPassword(inputPassword) {
 
 /**
  * Handles the updating of the master password.
- *
  * Prompts the user for the old master password, validates it, and then prompts for the new master password.
- *
  * @returns {Promise<boolean>} True if the password is updated, false otherwise.
  */
 export async function handleMasterPasswordUpdate() {
@@ -73,9 +68,9 @@ export async function handleMasterPasswordUpdate() {
       return NavigationAction.MAIN_MENU;
     }
 
-    await writeMasterPassword(newPassword);
+    await secureUpdateMasterPassword(newPassword);
 
-    clearSession();
+    clearSession(getSessionState());
     log(green("✓ Master password updated successfully!" + NEWLINE));
     return true;
   } catch (error) {
