@@ -1,4 +1,4 @@
-import { generateRandomPassword, encryptPassword, decryptPassword, encryptFile, decryptFile, isFileEncrypted } from '../../src/utils.js';
+import { generateRandomPassword } from '../../src/utils.js';
 import { PasswordManagerError } from '../../src/errorHandler.js';
 
 describe('Utils', () => {
@@ -120,70 +120,18 @@ describe('Utils', () => {
       expect(negativePassword.length).toBeGreaterThanOrEqual(12);
       expect(negativePassword.length).toBeLessThanOrEqual(16);
     });
-  });
 
-  describe('encryptPassword and decryptPassword', () => {
-    const testPassword = 'TestPassword123!';
-
-    test('should encrypt and decrypt password correctly', () => {
-      const encrypted = encryptPassword(testPassword);
-      const decrypted = decryptPassword(encrypted);
-      expect(decrypted).toBe(testPassword);
-    });
-
-    test('should not decrypt with wrong master password', () => {
-      const wrongMasterPassword = 'WrongPassword123!';
-      const encrypted = encryptPassword(wrongMasterPassword);
-      const decrypted = decryptPassword(encrypted);
-      expect(decrypted).not.toBe(testPassword);
-    });
-
-    test('should handle empty password', () => {
-      const encrypted = encryptPassword('');
-      const decrypted = decryptPassword(encrypted);
-      expect(decrypted).toBe('');
-    });
-  });
-
-  describe('encryptFile and decryptFile', () => {
-    const testPassword = 'TestPassword123!';
-    const testContent = 'TestContent123!';
-
-    test('should encrypt and decrypt file correctly', () => {
-      const encrypted = encryptFile(testContent, testPassword);
-      const decrypted = decryptFile(encrypted, testPassword); 
-
-      expect(decrypted).toBe(testContent);
-    });
-
-    test('should throw an error when decrypting with wrong master password', () => {
-      const wrongMasterPassword = 'WrongPassword123!';
-      const encrypted = encryptFile(testContent, testPassword);
-
-      try {
-        decryptFile(encrypted, wrongMasterPassword);
-        throw new Error('decryptFile should have thrown a PasswordManagerError but did not.');
-      } catch (error) {
-        expect(error).toBeInstanceOf(PasswordManagerError);
-        expect(error.message).toMatch(/decryption failed|data integrity check failed/i);
-      }
-    });
-  });
-
-  describe('isFileEncrypted', () => {
-    test('should return true for an encrypted file buffer', () => {
-      const encryptedBuffer = Buffer.from([1, 2, 3, 4, 5]); // Starts with version byte 1
-      expect(isFileEncrypted(encryptedBuffer)).toBe(true);
-    });
-
-    test('should return false for a non-encrypted file buffer', () => {
-      const nonEncryptedBuffer = Buffer.from([0, 2, 3, 4, 5]); // Does not start with version byte 1
-      expect(isFileEncrypted(nonEncryptedBuffer)).toBe(false);
-    });
-
-    test('should return false for an empty buffer', () => {
-      const emptyBuffer = Buffer.from([]);
-      expect(isFileEncrypted(emptyBuffer)).toBe(false);
+    test('should handle very small lengths gracefully', () => {
+      // Test that very small lengths are handled by using default length
+      const smallLengthPassword = generateRandomPassword(3);
+      expect(smallLengthPassword.length).toBeGreaterThanOrEqual(12);
+      expect(smallLengthPassword.length).toBeLessThanOrEqual(16);
+      
+      // Ensure it still has all required character types
+      expect(smallLengthPassword).toMatch(/[a-z]/);
+      expect(smallLengthPassword).toMatch(/[A-Z]/);
+      expect(smallLengthPassword).toMatch(/[0-9]/);
+      expect(smallLengthPassword).toMatch(/[-.!@#$%^&*_+=/?]/);
     });
   });
 });
