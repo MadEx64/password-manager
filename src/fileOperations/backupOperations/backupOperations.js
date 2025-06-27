@@ -4,9 +4,9 @@ import { PATHS, BACKUP_DIR, ERROR_CODES, CHARSET } from "../../constants.js";
 import { PasswordManagerError } from "../../errorHandler.js";
 import { writeFileAsync, readFileAsync, renameAsync, readdirAsync } from "../index.js";
 import { acquireLock, releaseLock } from "../../fileLock.js";
-import { readMasterPassword } from "../masterPassword.js";
-import { isFileEncrypted, encryptFile, decryptFile } from "../../utils.js";
+import { isFileEncrypted, encryptData, decryptData } from "../../encryption/index.js";
 import { red, bold } from "../../logger.js";
+import { getEncryptionKey, getCachedMasterPassword } from "../../auth/masterPasswordCache.js";
 
 /**
  * Creates a backup of the password vault file.
@@ -49,11 +49,14 @@ export async function createBackup(skipLock = false) {
     const fileBuffer = await readFileAsync(PATHS.PASSWORDS);
     let backupData;
 
-    const masterPassword = await readMasterPassword(lockAcquired ? true : false);
-    if (!masterPassword) {
+    // Get encryption key from secure authentication system
+    const cachedMasterPassword = getCachedMasterPassword();
+    const encryptionKey = await getEncryptionKey(cachedMasterPassword);
+    
+    if (!encryptionKey) {
       if (lockAcquired) await releaseLock();
       throw new PasswordManagerError(
-        red("Master password not found for backup encryption"),
+        red("Authentication required for backup encryption"),
         bold(red(ERROR_CODES.AUTHENTICATION_FAILED))
       );
     }
@@ -61,7 +64,7 @@ export async function createBackup(skipLock = false) {
     if (isFileEncrypted(fileBuffer)) {
       backupData = fileBuffer;
     } else {
-      backupData = encryptFile(fileBuffer.toString(CHARSET), masterPassword);
+      backupData = encryptData(fileBuffer.toString(CHARSET), encryptionKey);
     }
 
     await writeFileAsync(backupPath, backupData);
@@ -97,23 +100,28 @@ export async function restoreBackup(backupPath, skipLock = false) {
     }
     
     const backupBuffer = await readFileAsync(backupPath);
-    const masterPassword = await readMasterPassword(lockAcquired ? true : false);
-    if (!masterPassword) {
+    
+    // Get encryption key from secure authentication system
+    const cachedMasterPassword = getCachedMasterPassword();
+    const encryptionKey = await getEncryptionKey(cachedMasterPassword);
+    
+    if (!encryptionKey) {
       throw new PasswordManagerError(
-        red("Master password not found for backup decryption"),
+        red("Authentication required for backup decryption"),
         bold(red(ERROR_CODES.AUTHENTICATION_FAILED))
       );
     }
 
     let decryptedData;
     if (isFileEncrypted(backupBuffer)) {
-      decryptedData = decryptFile(backupBuffer, masterPassword);
+      decryptedData = decryptData(backupBuffer, encryptionKey);
     } else {
       decryptedData = backupBuffer.toString(CHARSET);
     }
 
     // Re-encrypt before writing to main file
-    const encryptedData = encryptFile(decryptedData, masterPassword);
+    const encryptedData = encryptData(decryptedData, encryptionKey);
+    
     // Acquire lock for restore operation
     if (!skipLock) {
       if (!(await acquireLock(10))) {
