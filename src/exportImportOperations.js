@@ -2,12 +2,16 @@ import fs from "fs";
 import os from "os";
 import inquirer from "inquirer";
 import { authenticateUser } from "./auth/index.js";
+import { getEncryptionKey } from "./auth/masterPasswordCache.js";
+import { decryptPassword, encryptPassword } from "./encryption/index.js";
 import { handleError } from "./errorHandler.js";
 import { NEWLINE } from "./constants.js";
 import validationTools from "./validation.js";
-import { readPasswordEntries, writePasswordEntries } from "./fileOperations/index.js";
+import {
+  readPasswordEntries,
+  writePasswordEntries,
+} from "./fileOperations/index.js";
 import { green, yellow, red, log } from "./logger.js";
-import { decryptPassword } from "./utils.js";
 
 /**
  * Exports all passwords to a JSON file.
@@ -65,7 +69,7 @@ export async function exportPasswordsToJSON() {
             choices: [
               "Replace existing file",
               "Choose different path",
-              "Cancel export"
+              "Cancel export",
             ],
           },
         ]);
@@ -83,13 +87,15 @@ export async function exportPasswordsToJSON() {
       }
     }
 
-    const data = entries
-      .map((entry) => {
+    const key = await getEncryptionKey();
+
+    const data = await Promise.all(
+      entries.map(async (entry) => {
         try {
           return {
             service: entry.service,
             identifier: entry.identifier,
-            password: decryptPassword(entry.password),
+            password: await decryptPassword(entry.password, key),
             createdAt: entry.createdAt,
             updatedAt: entry.updatedAt,
           };
@@ -103,7 +109,7 @@ export async function exportPasswordsToJSON() {
           return null;
         }
       })
-      .filter((entry) => entry !== null);
+    ).then((results) => results.filter((entry) => entry !== null));
 
     await fs.promises.writeFile(
       exportPath,
@@ -231,10 +237,12 @@ export async function importPasswordsFromJSON() {
         continue;
       }
 
+      const key = await getEncryptionKey();
+
       newEntries.push({
         service: entry.service,
         identifier: entry.identifier,
-        password: entry.password,
+        password: await encryptPassword(entry.password, key),
         createdAt: entry.createdAt || new Date().toISOString(),
         updatedAt: entry.updatedAt || new Date().toISOString(),
       });
@@ -244,6 +252,7 @@ export async function importPasswordsFromJSON() {
     }
 
     if (imported > 0) {
+      log(yellow("Importing passwords..." + NEWLINE));
       await writePasswordEntries(newEntries);
       const numberOfPasswordsImported = imported;
       const numberOfPasswordsNotImported =
@@ -251,7 +260,12 @@ export async function importPasswordsFromJSON() {
 
       log(
         green(
-          `Imported ${numberOfPasswordsImported} password${
+          "✔ Import completed successfully." + NEWLINE
+        )
+      );
+      log(
+        green(
+          `✔ Imported ${numberOfPasswordsImported} password${
             numberOfPasswordsImported === 1 ? "" : "s"
           } from ${importPath}${NEWLINE}`
         )
@@ -338,7 +352,7 @@ export async function exportPasswordsToCSV() {
             choices: [
               "Replace existing file",
               "Choose different path",
-              "Cancel export"
+              "Cancel export",
             ],
           },
         ]);
@@ -356,13 +370,17 @@ export async function exportPasswordsToCSV() {
       }
     }
 
-    const data = entries.map((entry) => ({
-      service: entry.service,
-      identifier: entry.identifier,
-      password: decryptPassword(entry.password),
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
-    }));
+    const key = await getEncryptionKey();
+
+    const data = await Promise.all(
+      entries.map(async (entry) => ({
+        service: entry.service,
+        identifier: entry.identifier,
+        password: await decryptPassword(entry.password, key),
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      }))
+    );
 
     const csvHeader = "service,identifier,password,createdAt,updatedAt";
 
@@ -373,12 +391,17 @@ export async function exportPasswordsToCSV() {
       )
       .join(NEWLINE);
 
-    await fs.promises.writeFile(exportPath, csvHeader + NEWLINE + csvContent, "utf8");
+    await fs.promises.writeFile(
+      exportPath,
+      csvHeader + NEWLINE + csvContent,
+      "utf8"
+    );
 
     log(green(`✔ Passwords exported to ${exportPath}`));
     log(
       yellow(
-        "Please make sure to protect this file as it contains sensitive information." + NEWLINE
+        "Please make sure to protect this file as it contains sensitive information." +
+          NEWLINE
       )
     );
 
@@ -405,7 +428,8 @@ export async function importPasswordsFromCSV() {
         type: "input",
         name: "importPath",
         message:
-          "Enter the path to import passwords from (e.g. ./passwords-export.csv):" + NEWLINE,
+          "Enter the path to import passwords from (e.g. ./passwords-export.csv):" +
+          NEWLINE,
         default: "./passwords-export.csv",
         validate: (value) => validationTools.validateNonEmptyInput(value),
       },
@@ -423,10 +447,21 @@ export async function importPasswordsFromCSV() {
       return false;
     }
 
+    const fileHeader = fileContent.split(NEWLINE)[0];
+    if (fileHeader !== "service,identifier,password,createdAt,updatedAt") {
+      log(
+        red(
+          "Invalid CSV file format. Please ensure the file has the correct header." +
+            NEWLINE
+        )
+      );
+      return false;
+    }
+
     const linesArray = fileContent
-      .split(os.EOL)
+      .split(NEWLINE)
       .map((line) => line.trim())
-      .filter((line) => line !== "");
+      .filter((line) => line !== "" && line !== fileHeader);
 
     const existingEntries = await readPasswordEntries();
     const existingKeys = new Set(
@@ -457,10 +492,12 @@ export async function importPasswordsFromCSV() {
         continue;
       }
 
+      const key = await getEncryptionKey();
+
       newEntries.push({
         service,
         identifier,
-        password,
+        password: await encryptPassword(password, key),
         createdAt: createdAt || new Date().toISOString(),
         updatedAt: updatedAt || new Date().toISOString(),
       });
