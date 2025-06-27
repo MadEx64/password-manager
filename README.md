@@ -11,7 +11,7 @@ A command-line password manager that stores your credentials locally with strong
 - Emergency recovery tool
 
 ## Security
-- All data encrypted locally (AES-256)
+- All data encrypted locally
 - Session expires after 1 minute of inactivity
 - File integrity and locking
 
