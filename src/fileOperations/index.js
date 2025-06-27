@@ -13,3 +13,4 @@ export * from "./backupOperations/backupOperations.js";
 export * from "./backupOperations/backupManager.js";
 export * from "./utils.js";
 export * from "./checksum.js";
+export * from "./integrityCheck.js";
