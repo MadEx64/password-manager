@@ -21,10 +21,8 @@ export async function createPasswordVaultFile() {
   try {
     const content = "[]";
     
-    const { isAuthSystemInitialized } = await import('../auth/secureAuth.js');
-    const isSecureAuthInit = await isAuthSystemInitialized();
-    
-    if (!isSecureAuthInit) {
+    const { isFirstTimeSetup } = await import('../auth/secureAuth.js');
+    if (isFirstTimeSetup) {
       await writeFileAsync(PATHS.PASSWORDS, content, CHARSET);
       return;
     }

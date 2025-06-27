@@ -9,6 +9,7 @@ import { isFileEncrypted } from "../encryption/index.js";
 import { readFileAsync } from "./index.js";
 import { listBackups } from "./backupOperations/backupOperations.js";
 import { createChecksum, verifyChecksum } from "./checksum.js";
+import { isFirstTimeSetup } from "../auth/secureAuth.js";
 
 /**
  * Checks the integrity of the password vault, authentication system, and backups.
@@ -16,8 +17,6 @@ import { createChecksum, verifyChecksum } from "./checksum.js";
  */
 export async function checkIntegrity() {
   let overallHealthy = true;
-  const { isAuthSystemInitialized } = await import('../auth/secureAuth.js');
-  const isFirstTimeSetup = !(await isAuthSystemInitialized());
 
   const vaultHealthy = await checkPasswordVaultIntegrity(isFirstTimeSetup);
   if (!vaultHealthy) {

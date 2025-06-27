@@ -218,22 +218,15 @@ export async function updateMasterPassword(newMasterPassword) {
   }
 }
 
-/**
- * Checks if the authentication system is initialized by checking secure storage.
- * 
- * @returns {Promise<boolean>} True if initialized.
- */
-export async function isAuthSystemInitialized() {
+export async function isFirstTimeSetup() {
   try {
     const secretKey = await retrieveAppSecretKey();
     const authHash = await retrieveAuthHash();
-    return !!(secretKey && authHash);
+    return !(secretKey && authHash); // Return true if it's first time setup
   } catch (error) {
-    return false;
+    return true; // If we can't check, assume first time setup
   }
 }
-
-
 
 /**
  * Resets the authentication hash for a new master password.

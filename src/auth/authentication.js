@@ -10,14 +10,13 @@ import { PasswordManagerError } from "../errorHandler.js";
 import { log, blue, green, red, bold, yellow } from "../logger.js";
 import { ERROR_CODES, NEWLINE } from "../constants.js";
 import { 
-  isAuthSystemInitialized, 
+  isFirstTimeSetup, 
   setupMasterPassword as secureSetupMasterPassword,
   deriveAuthenticationKey 
 } from "./secureAuth.js";
 
 /**
- * Authenticates the user with the master password using the enhanced security system.
- *
+ * Authenticates the user with the master password.
  * If the master password is not set, it will prompt the user to set it.
  * If the master password is set, it will validate the user's input against the master password and update the session state if the master password is validated.
  *
@@ -31,9 +30,8 @@ export async function authenticateUser() {
       clearSession(getSessionState());
     }
 
-    // Check if secure auth system is initialized, if not set it up
-    if (!(await isAuthSystemInitialized())) {
-      const result = await handleNoStoredMasterPassword();
+    if (await isFirstTimeSetup()) {
+      const result = await handleFirstTimeSetup();
       if (result) {
         return true;
       } else {
@@ -108,12 +106,10 @@ function handleFailedLoginAttempt(attempts, MAX_ATTEMPTS) {
 }
 
 /**
- * Handles the case when no master password is stored. 
- * Sets up a new master password using the enhanced security system.
- *
- * @returns {Promise<boolean>} True if the master password is set successfully.
+ * @returns {Promise<boolean>} True if the master password is set successfully and the user is logged in.
+ * @throws {PasswordManagerError} If the master password is not set successfully.
  */
-async function handleNoStoredMasterPassword() {
+async function handleFirstTimeSetup() {
   try {
     log(blue("Welcome! You will be asked to set a master password to access the application."));
     log(yellow("⚠ This will also create a secure application key stored in your system's credential store. This is essential for the application to work."));
