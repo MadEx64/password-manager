@@ -24,10 +24,11 @@ import {
  */
 export async function authenticateUser() {
   try {
-    if (isSessionValid(getSessionState())) {
+    const sessionState = getSessionState();
+    if (isSessionValid(sessionState)) {
       return true;
     } else {
-      clearSession(getSessionState());
+      clearSession(sessionState);
     }
 
     if (await isFirstTimeSetup()) {
