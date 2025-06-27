@@ -8,10 +8,10 @@ import {
   deleteBackup,
 } from "../index.js";
 import { handleError } from "../../errorHandler.js";
-import { isSessionValid, authenticateUser, sessionState } from "../../auth/index.js";
+import { isSessionValid, authenticateUser, getSessionState } from "../../auth/index.js";
 import { promptNavigation, NavigationAction } from "../../navigation.js";
 import { NEWLINE } from "../../constants.js";
-import { log, yellow, red } from "../../logger.js";
+import { log, yellow, red, green } from "../../logger.js";
 
 /**
  * Prompts the user for backup operations.
@@ -67,7 +67,7 @@ export async function handleBackup() {
 export async function createBackupPasswordVault() {
   try {
     // Check session and authenticate if needed
-    if (!isSessionValid(sessionState)) {
+    if (!isSessionValid(getSessionState())) {
       if (!(await authenticateUser())) {
         return false;
       }
@@ -79,15 +79,15 @@ export async function createBackupPasswordVault() {
       const backupPath = await createBackup(true);
 
       if (!backupPath) {
-        spinner.fail("No passwords to backup.");
+        spinner.fail(red("No passwords to backup." + NEWLINE));
         return false;
       }
 
-      spinner.succeed(`Backup created successfully at: ${backupPath}${NEWLINE}`);
+      spinner.succeed(green(`Backup created successfully at: ${backupPath}${NEWLINE}`));
 
       return backupPath;
     } catch (error) {
-      spinner.fail(`Backup failed: ${error.message}`);
+      spinner.fail(red(`Backup failed: ${error.message}` + NEWLINE));
       return false;
     }
   } catch (error) {
@@ -103,7 +103,7 @@ export async function createBackupPasswordVault() {
 export async function restoreBackupPasswordVault() {
   try {
     // Check session and authenticate if needed
-    if (!isSessionValid(sessionState)) {
+    if (!isSessionValid(getSessionState())) {
       if (!(await authenticateUser())) {
         return false;
       }
@@ -170,14 +170,14 @@ export async function restoreBackupPasswordVault() {
       const success = await restoreBackup(selectedBackup, true);
 
       if (success) {
-        spinner.succeed("Backup restored successfully!" + NEWLINE);
+        spinner.succeed(green("Backup restored successfully!" + NEWLINE));
         return true;
       } else {
-        spinner.fail("Failed to restore backup.");
+        spinner.fail(red("Failed to restore backup." + NEWLINE));
         return false;
       }
     } catch (error) {
-      spinner.fail(`Restoration failed: ${error.message}`);
+      spinner.fail(red(`Restoration failed: ${error.message}` + NEWLINE));
       return false;
     }
   } catch (error) {
@@ -193,7 +193,7 @@ export async function restoreBackupPasswordVault() {
 export async function deleteBackupPasswordVault() {
   try {
     // Check session and authenticate if needed
-    if (!isSessionValid(sessionState)) {
+    if (!isSessionValid(getSessionState())) {
       if (!(await authenticateUser())) {
         return false;
       }
@@ -258,14 +258,14 @@ export async function deleteBackupPasswordVault() {
       const success = await deleteBackup(selectedBackup);
 
       if (success) {
-        spinner.succeed("Backup deleted successfully!" + NEWLINE);
+        spinner.succeed(green("Backup deleted successfully!" + NEWLINE));
         return true;
       } else {
-        spinner.fail("Failed to delete backup." + NEWLINE);
+        spinner.fail(red("Failed to delete backup." + NEWLINE));
         return false;
       }
     } catch (error) {
-      spinner.fail(`Deletion failed: ${error.message}` + NEWLINE);
+      spinner.fail(red(`Deletion failed: ${error.message}` + NEWLINE));
       return false;
     }
   } catch (error) {
@@ -273,7 +273,6 @@ export async function deleteBackupPasswordVault() {
     return false;
   }
 }
-
 /**
  * Formats the backup choice for display
  * @param {string} path - The path to the backup file
