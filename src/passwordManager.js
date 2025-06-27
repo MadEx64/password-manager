@@ -9,16 +9,14 @@ import {
   deletePasswordEntry,
   updatePasswordEntry,
 } from "./fileOperations/index.js";
-import {
-  generateRandomPassword,
-  encryptPassword,
-  decryptPassword,
-} from "./utils.js";
+import { encryptPassword, decryptPassword } from "./encryption/index.js";
+import { generateRandomPassword } from "./utils.js";
 import { handleError, PasswordManagerError } from "./errorHandler.js";
 import validationTools from "./validation.js";
 import { ERROR_CODES, NEWLINE } from "./constants.js";
 import { promptNavigation, NavigationAction } from "./navigation.js";
 import { log, bold, underline, green, yellow, red } from "./logger.js";
+import { getEncryptionKey } from "./auth/masterPasswordCache.js";
 
 /**
  * Adds a new password entry to the vault.
@@ -73,7 +71,12 @@ export async function addPassword() {
           default: 16,
           when: (answers) => answers.generatePassword && answers.customLength,
           validate: (value) => {
-            if (isNaN(value) || !Number.isInteger(value) || value < 8 || value > 32) {
+            if (
+              isNaN(value) ||
+              !Number.isInteger(value) ||
+              value < 8 ||
+              value > 32
+            ) {
               return "Please enter a valid number between 8 and 32";
             }
             return true;
@@ -110,7 +113,8 @@ export async function addPassword() {
         ? generateRandomPassword(answers.passwordLength)
         : answers.userPassword;
 
-      const encryptedPassword = encryptPassword(password);
+      const key = await getEncryptionKey();
+      const encryptedPassword = await encryptPassword(password, key);
 
       if (
         !validationTools.validatePasswordEntry({
@@ -179,6 +183,10 @@ export async function viewPassword(entries = null) {
 
       if (!entries) {
         entries = await readPasswordEntries();
+        if (entries === "{}") {
+          log(yellow("No passwords stored yet." + NEWLINE));
+          return false;
+        }
       }
 
       if (entries.length === 0) {
@@ -247,7 +255,11 @@ export async function viewPassword(entries = null) {
         },
       ]);
 
-      const decryptedPassword = decryptPassword(selectedEntry.password);
+      const key = await getEncryptionKey();
+      const decryptedPassword = await decryptPassword(
+        selectedEntry.password,
+        key
+      );
 
       if (action === "Show Password") {
         log(underline(`\nService`), bold.green(selectedEntry.service));
@@ -336,11 +348,12 @@ export async function updatePassword(selectedEntry) {
 
           const entries = await readPasswordEntries();
 
-          const identifierValidation = validationTools.validateNonDuplicateIdentifier(
-            value.trim(),
-            selectedService,
-            entries
-          );
+          const identifierValidation =
+            validationTools.validateNonDuplicateIdentifier(
+              value.trim(),
+              selectedService,
+              entries
+            );
           if (identifierValidation !== true) return identifierValidation;
 
           return true;
@@ -440,12 +453,13 @@ export async function updatePassword(selectedEntry) {
     }
 
     const updatedPassword = keepCurrentPassword
-      ? decryptPassword(selectedEntry.password)
+      ? selectedEntry.password
       : generatePassword
       ? generateRandomPassword(customLength ? passwordLength : 0)
       : newPassword;
 
-    const encryptedPassword = encryptPassword(updatedPassword);
+    const key = await getEncryptionKey();
+    const encryptedPassword = await encryptPassword(updatedPassword, key);
 
     if (
       !validationTools.validatePasswordEntry({
