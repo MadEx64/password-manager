@@ -1,19 +1,11 @@
 import { join } from 'path';
+
 export const BASE_DIR = process.cwd();
 export const BACKUP_DIR = join(BASE_DIR, '.backups');
 export const TEST_DIR = join(BASE_DIR, 'test_data');
 export const isTestMode = process.env.NODE_ENV === 'test';
 export const ROOT_DIR = isTestMode ? TEST_DIR : BASE_DIR;
 
-/**
- * Gets the session timeout.
- * @returns {number} The session timeout in milliseconds.
- */
-export function getSessionTimeout() {
-  return process.env.PASSWORD_MANAGER_SESSION_TIMEOUT
-    ? parseInt(process.env.PASSWORD_MANAGER_SESSION_TIMEOUT, 10)
-    : 1000 * 60 * 5;
-}
 export const FILE_LOCK_TIMEOUT = 10000;
 export const FILE_ENCRYPTION_ENABLED = true;
 export const NEWLINE = '\n';
@@ -24,18 +16,10 @@ export const CHARSET = 'utf-8';
  * @type {Object}
  * @property {string} PASSWORDS - Path to the passwords file.
  * @property {string} PASSWORDS_BACKUP - Path to the passwords backup file.
- * @property {string} MASTER_PASSWORD - Path to the master password file.
- * @property {string} MASTER_PASSWORD_BACKUP - Path to the master password backup file.
- * @property {string} RECOVERY_SALT - Path to the recovery salt file.
- * @property {string} RECOVERY_SALT_BACKUP - Path to the recovery salt backup file.
  */
 export const PATHS = {
   PASSWORDS: join(ROOT_DIR, '.passwords'),
   PASSWORDS_BACKUP: join(ROOT_DIR, '.passwords.bak'),
-  MASTER_PASSWORD: join(ROOT_DIR, '.masterPassword'),
-  MASTER_PASSWORD_BACKUP: join(ROOT_DIR, '.masterPassword.bak'),
-  RECOVERY_SALT: join(ROOT_DIR, '.recovery_salt'),
-  RECOVERY_SALT_BACKUP: join(ROOT_DIR, '.recovery_salt.bak'),
 };
 
 /**
@@ -85,6 +69,9 @@ export const PASSWORD_STRENGTH = {
  * @property {string} DECRYPTION_FAILED - Decryption failed.
  * @property {string} ENCRYPTION_FAILED - Encryption failed.
  * @property {string} RECOVERY_KEY_GENERATION_FAILED - Recovery key generation failed.
+ * @property {string} MASTER_PASSWORD_KEY_GENERATION_FAILED - Master password key generation failed.
+ * @property {string} APP_SECRET_KEY_GENERATION_FAILED - Application secret key generation failed.
+ * @property {string} AUTH_KEY_DERIVATION_FAILED - Authentication key derivation failed.
  * @property {string} MIGRATION_FAILED - Migration failed.
  * @property {string} FILE_CORRUPTED - File is corrupted.
  * @property {string} INVALID_ENCRYPTION_FORMAT - Invalid encryption format.
@@ -101,19 +88,13 @@ export const ERROR_CODES = {
   DECRYPTION_FAILED: 'DECRYPTION_FAILED',
   ENCRYPTION_FAILED: 'ENCRYPTION_FAILED',
   RECOVERY_KEY_GENERATION_FAILED: 'RECOVERY_KEY_GENERATION_FAILED',
+  MASTER_PASSWORD_KEY_GENERATION_FAILED: 'MASTER_PASSWORD_KEY_GENERATION_FAILED',
+  APP_SECRET_KEY_GENERATION_FAILED: 'APP_SECRET_KEY_GENERATION_FAILED',
+  AUTH_KEY_DERIVATION_FAILED: 'AUTH_KEY_DERIVATION_FAILED',
   MIGRATION_FAILED: 'MIGRATION_FAILED',
   FILE_CORRUPTED: 'FILE_CORRUPTED',
   INVALID_ENCRYPTION_FORMAT: 'INVALID_ENCRYPTION_FORMAT'
 };
-
-/**
- * 256-bit key.
- * @type {number[]}
- */
-export const KEY = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-  23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-];
 
 /**
  * File locking configuration.
