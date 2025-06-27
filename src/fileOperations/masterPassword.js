@@ -2,12 +2,12 @@ import fs from "fs";
 import { PATHS, FILE_ENCRYPTION_ENABLED, ERROR_CODES, NEWLINE, CHARSET } from "../constants.js";
 import { PasswordManagerError } from "../errorHandler.js";
 import { readFileAsync, writeFileAsync } from "./index.js";
-import { isFileEncrypted, decryptFile, encryptFile } from "../utils.js";
-import { encryptPassword } from "../utils.js";
+import { encryptData, isFileEncrypted, encryptPassword } from "../encryption/index.js";
 import { acquireLock, releaseLock } from "../fileLock.js";
 import { generateRecoveryKey } from "../recovery.js";
 import { createChecksum, verifyChecksum } from "./checksum.js";
 import { log, yellow, red, bold } from "../logger.js";
+import { getEncryptionKey } from "../auth/masterPasswordCache.js";
 
 /**
  * Reads the master password from the master password file. If it can't decrypt the master password file, it will try to restore from the backup.
@@ -90,13 +90,13 @@ export async function writeMasterPassword(password) {
       );
     }
 
-    password = encryptPassword(password);
+    const key = await getEncryptionKey(password);
+    password = await encryptPassword(password, key);
     const checksum = createChecksum(password);
     const content = `${password}${NEWLINE}${checksum}`;
     
-    const recoveryKey = await generateRecoveryKey();
-    const encryptedData = encryptFile(content, recoveryKey);
-    await writeFileAsync(PATHS.MASTER_PASSWORD, encryptedData);
+    const encryptedData = encryptData(content, key);
+    await writeFileAsync(PATHS.MASTER_PASSWORD, encryptedData.toString("utf8"));
 
     if (fs.existsSync(PATHS.MASTER_PASSWORD)) {
       const backupData = await readFileAsync(PATHS.MASTER_PASSWORD, CHARSET);
