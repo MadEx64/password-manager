@@ -8,7 +8,7 @@ import {
   deleteBackup,
 } from "../index.js";
 import { handleError } from "../../errorHandler.js";
-import { isSessionValid, authenticateUser, getSessionState } from "../../auth/index.js";
+import { withAuthentication } from "../../auth/authWrapper.js";
 import { promptNavigation, NavigationAction } from "../../navigation.js";
 import { NEWLINE } from "../../constants.js";
 import { log, yellow, red, green } from "../../logger.js";
@@ -64,15 +64,8 @@ export async function handleBackup() {
  * Creates a backup of the password vault file.
  * @returns {Promise<boolean|string>} Path to the backup file if successful, false otherwise
  */
-export async function createBackupPasswordVault() {
+export const createBackupPasswordVault = withAuthentication(async () => {
   try {
-    // Check session and authenticate if needed
-    if (!isSessionValid(getSessionState())) {
-      if (!(await authenticateUser())) {
-        return false;
-      }
-    }
-
     const spinner = ora("Creating backup file..." + NEWLINE).start();
 
     try {
@@ -94,21 +87,14 @@ export async function createBackupPasswordVault() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Restores a backup of the password vault file.
  * @returns {Promise<boolean|string>} True if the restore was successful, false otherwise
  */
-export async function restoreBackupPasswordVault() {
+export const restoreBackupPasswordVault = withAuthentication(async () => {
   try {
-    // Check session and authenticate if needed
-    if (!isSessionValid(getSessionState())) {
-      if (!(await authenticateUser())) {
-        return false;
-      }
-    }
-
     const backupFiles = await listBackups();
 
     if (backupFiles.length === 0) {
@@ -184,21 +170,14 @@ export async function restoreBackupPasswordVault() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Deletes a backup of the password vault.
  * @returns {Promise<boolean|string>} True if the backup was deleted successfully, false otherwise
  */
-export async function deleteBackupPasswordVault() {
+export const deleteBackupPasswordVault = withAuthentication(async () => {
   try {
-    // Check session and authenticate if needed
-    if (!isSessionValid(getSessionState())) {
-      if (!(await authenticateUser())) {
-        return false;
-      }
-    }
-
     const backupFiles = await listBackups();
 
     if (backupFiles.length === 0) {
@@ -268,11 +247,12 @@ export async function deleteBackupPasswordVault() {
       spinner.fail(red(`Deletion failed: ${error.message}` + NEWLINE));
       return false;
     }
-  } catch (error) {
+  }
+  catch (error) {
     handleError(error);
     return false;
   }
-}
+});
 /**
  * Formats the backup choice for display
  * @param {string} path - The path to the backup file
