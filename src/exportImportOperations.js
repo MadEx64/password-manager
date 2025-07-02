@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import inquirer from "inquirer";
-import { authenticateUser } from "./auth/index.js";
+import { withAuthentication } from "./auth/authWrapper.js";
 import { getEncryptionKey } from "./auth/masterPasswordCache.js";
 import { decryptPassword, encryptPassword } from "./encryption/index.js";
 import { handleError } from "./errorHandler.js";
@@ -17,12 +17,8 @@ import { green, yellow, red, log } from "./logger.js";
  * Exports all passwords to a JSON file.
  * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export async function exportPasswordsToJSON() {
+export const exportPasswordsToJSON = withAuthentication(async () => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const entries = await readPasswordEntries();
 
     if (entries.length === 0) {
@@ -150,18 +146,14 @@ export async function exportPasswordsToJSON() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Imports passwords from a JSON file.
  * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export async function importPasswordsFromJSON() {
+export const importPasswordsFromJSON = withAuthentication(async () => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const defaultImportPath = `${os.homedir()}/passwords-export-${
       new Date().toISOString().split("T")[0]
     }.json`;
@@ -294,18 +286,14 @@ export async function importPasswordsFromJSON() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Exports all passwords to a CSV file.
  * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export async function exportPasswordsToCSV() {
+export const exportPasswordsToCSV = withAuthentication(async () => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const entries = await readPasswordEntries();
 
     if (entries.length === 0) {
@@ -411,18 +399,14 @@ export async function exportPasswordsToCSV() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Imports passwords from a CSV file.
  * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export async function importPasswordsFromCSV() {
+export const importPasswordsFromCSV = withAuthentication(async () => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const { importPath } = await inquirer.prompt([
       {
         type: "input",
@@ -543,19 +527,15 @@ export async function importPasswordsFromCSV() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Handles the export of passwords based on the selected format.
  * @param {string} format - The format to export to (JSON or CSV).
  * @returns {Promise<boolean>} True if export was successful, false otherwise.
  */
-export async function handleExportPasswords() {
+export const handleExportPasswords = withAuthentication(async () => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const format = await inquirer.prompt([
       {
         type: "list",
@@ -580,19 +560,15 @@ export async function handleExportPasswords() {
     handleError(error);
     return false;
   }
-}
+});
 
 /**
  * Handles the import of passwords based on the selected format.
  * @param {string} format - The format to import from (JSON or CSV).
  * @returns {Promise<boolean>} True if import was successful, false otherwise.
  */
-export async function handleImportPasswords() {
+export const handleImportPasswords = withAuthentication(async () => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const format = await inquirer.prompt([
       {
         type: "list",
@@ -617,4 +593,4 @@ export async function handleImportPasswords() {
     handleError(error);
     return false;
   }
-}
+});

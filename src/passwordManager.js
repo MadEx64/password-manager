@@ -1,7 +1,7 @@
 import inquirer from "inquirer";
 import clipboard from "clipboardy";
 import ora from "ora";
-import { authenticateUser } from "./auth/index.js";
+import { withAuthentication } from "./auth/authWrapper.js";
 import { promptIdentifier } from "./prompts.js";
 import {
   writePasswordEntries,
@@ -27,13 +27,9 @@ import { getEncryptionKey } from "./auth/masterPasswordCache.js";
  * @returns {Promise<boolean|string>} True if the password was added successfully,
  * false otherwise, or a NavigationAction if navigation was requested.
  */
-export async function addPassword() {
+export const addPassword = withAuthentication(async () => {
   while (true) {
     try {
-      if (!(await authenticateUser())) {
-        return false;
-      }
-
       const entries = await readPasswordEntries();
 
       const { service } = await inquirer.prompt([
@@ -164,7 +160,7 @@ export async function addPassword() {
       handleError(error);
     }
   }
-}
+});
 
 /**
  * Prompts the user to show a password entry, copy to the clipboard, update it, delete it, or return to the main menu.
@@ -174,13 +170,9 @@ export async function addPassword() {
  *
  * @returns {Promise<boolean|function|NavigationAction>} True if the password entry was shown successfully, a function call, or a NavigationAction if navigation was requested.
  */
-export async function viewPassword(entries = null) {
+export const viewPassword = withAuthentication(async (entries = null) => {
   while (true) {
     try {
-      if (!(await authenticateUser())) {
-        return false;
-      }
-
       if (!entries) {
         entries = await readPasswordEntries();
         if (entries === "{}") {
@@ -307,7 +299,7 @@ export async function viewPassword(entries = null) {
       handleError(error);
     }
   }
-}
+});
 
 /**
  * Updates a password entry in the vault.
@@ -315,12 +307,8 @@ export async function viewPassword(entries = null) {
  * @returns {Promise<boolean|string>} True if the password was updated successfully.
  * false otherwise, or a NavigationAction if navigation was requested.
  */
-export async function updatePassword(selectedEntry) {
+export const updatePassword = withAuthentication(async (selectedEntry) => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const selectedService = selectedEntry.service;
     const selectedIdentifier = selectedEntry.identifier;
 
@@ -493,7 +481,7 @@ export async function updatePassword(selectedEntry) {
   } catch (error) {
     handleError(error);
   }
-}
+});
 
 /**
  * Deletes a password entry from the vault.
@@ -501,12 +489,8 @@ export async function updatePassword(selectedEntry) {
  * @returns {Promise<boolean|string>} True if the password was deleted successfully.
  * false otherwise, or a NavigationAction if navigation was requested.
  */
-export async function deletePassword(entry) {
+export const deletePassword = withAuthentication(async (entry) => {
   try {
-    if (!(await authenticateUser())) {
-      return false;
-    }
-
     const { confirmDelete } = await inquirer.prompt([
       {
         type: "confirm",
@@ -527,7 +511,7 @@ export async function deletePassword(entry) {
   } catch (error) {
     handleError(error);
   }
-}
+});
 
 /**
  * Searches for a password entry in the vault by prompting the user for a search query.
