@@ -15,8 +15,9 @@ import { handleError, PasswordManagerError } from "./errorHandler.js";
 import validationTools from "./validation.js";
 import { ERROR_CODES, NEWLINE } from "./constants.js";
 import { promptNavigation, NavigationAction } from "./navigation.js";
-import { log, bold, underline, green, yellow, red } from "./logger.js";
+import { log, bold, underline, green, yellow, red, blue, drawTable, stripAnsi } from "./logger.js";
 import { getEncryptionKey } from "./auth/masterPasswordCache.js";
+import { analyzePasswordStrength } from "./security/strengthAnalyzer.js";
 
 /**
  * Adds a new password entry to the vault.
@@ -239,6 +240,7 @@ export const viewPassword = withAuthentication(async (entries = null) => {
           message: "What would you like to do?",
           choices: [
             "Show Password",
+            "Analyze Password Strength",
             "Copy to Clipboard",
             "Update Password",
             "Delete Password",
@@ -254,9 +256,47 @@ export const viewPassword = withAuthentication(async (entries = null) => {
       );
 
       if (action === "Show Password") {
-        log(underline(`\nService`), bold.green(selectedEntry.service));
-        log(underline(`Identifier`), bold.green(selectedEntry.identifier));
-        await hidePassword(decryptedPassword, underline(`Password`));
+        const labels = ["Service", "Identifier", "Password"];
+        const maxLabelLen = Math.max(...labels.map(l => stripAnsi(l).length));
+        const data = [
+          { label: "Service", value: bold.green(selectedEntry.service) },
+          { label: "Identifier", value: bold.green(selectedEntry.identifier) },
+        ];
+
+        const stripAnsiSelectedService = stripAnsi(bold.green(selectedEntry.service));
+        const stripAnsiSelectedIdentifier = stripAnsi(bold.green(selectedEntry.identifier));
+        const stripAnsiDecryptedPassword = stripAnsi(yellow(decryptedPassword));
+
+        const maxValueLen = Math.max(
+          stripAnsiSelectedService.length,
+          stripAnsiSelectedIdentifier.length,
+          stripAnsiDecryptedPassword.length
+        );
+
+        const width = Math.max(maxLabelLen + maxValueLen + 5, "Password Entry".length + 4);
+
+        drawTable([
+          ...data,
+          { type: 'separator' }
+        ], "Password Entry", true);
+
+        await hidePassword(decryptedPassword, underline(`Password`), { width, maxLabelLen });
+      } else if (action === "Analyze Password Strength") {
+        const strength = analyzePasswordStrength(decryptedPassword);
+        const strengthEntries = [
+          { label: "Strength Score", value: green(`${strength.score} (0-4)`) },
+          { label: "Crack Time", value: green(strength.crackTime) },
+        ];
+
+        if (strength.feedback.warning) {
+          strengthEntries.push({ label: "Warning", value: red(strength.feedback.warning) });
+        }
+
+        if (strength.feedback.suggestions.length > 0) {
+          strengthEntries.push({ label: "Suggestions", value: yellow(strength.feedback.suggestions.join(', ')) });
+        }
+
+        drawTable(strengthEntries, "Security Analysis");
       } else if (action === "Copy to Clipboard") {
         try {
           clipboard.writeSync(decryptedPassword);
@@ -265,7 +305,7 @@ export const viewPassword = withAuthentication(async (entries = null) => {
           log(
             red(
               "Failed to copy password to clipboard. Please try again." +
-                NEWLINE
+              NEWLINE
             )
           );
         }
@@ -434,7 +474,7 @@ export const updatePassword = withAuthentication(async (selectedEntry) => {
       log(
         yellow(
           "Update cancelled. No changes were made. Returning to main menu..." +
-            NEWLINE
+          NEWLINE
         )
       );
       return false;
@@ -552,8 +592,7 @@ export async function searchPassword() {
 
     log(
       green(
-        `Found ${results.length} result${
-          results.length === 1 ? "" : "s"
+        `Found ${results.length} result${results.length === 1 ? "" : "s"
         }.${NEWLINE}`
       )
     );
@@ -581,11 +620,28 @@ export async function searchPassword() {
  * Hides the password from the console after it is generated.
  *
  * @param {string} password - The password to hide.
+ * @param {string} message - The label to show (e.g. "Password").
+ * @param {Object} tableMeta - Metadata for table alignment (width, maxLabelLen).
  * @returns {Promise<void>}
  */
-async function hidePassword(password, message) {
+async function hidePassword(password, message, tableMeta) {
+  const { width, maxLabelLen } = tableMeta;
+  const horizontalLine = "─".repeat(width);
   const hiddenPassword = "*".repeat(Math.floor(Math.random() * 9) + 8);
-  process.stdout.write(`${message}: ${yellow(password)}${NEWLINE}`);
+
+  const formatPasswordRow = (pwd) => {
+    const labelStr = stripAnsi(message);
+    const labelPadding = " ".repeat(Math.max(0, maxLabelLen - labelStr.length));
+    const lineContent = ` ${underline(message)}${labelPadding} : ${yellow(pwd)}`;
+    const lineContentLen = 1 + labelStr.length + labelPadding.length + 3 + stripAnsi(yellow(pwd)).length;
+    const endPadding = " ".repeat(Math.max(0, width - lineContentLen));
+    return blue("│") + lineContent + endPadding + blue("│");
+  };
+
+  // Initial show
+  process.stdout.write(formatPasswordRow(password) + NEWLINE);
+  log(blue(`└${horizontalLine}┘`));
+  log("");
 
   const spinner = ora(`Hiding password in 5 seconds...`).start();
   spinner.color = "yellow";
@@ -593,8 +649,11 @@ async function hidePassword(password, message) {
   await new Promise((resolve) => setTimeout(resolve, 5000));
   spinner.stop();
 
-  process.stdout.moveCursor(0, -1);
+  // Move up three lines (row + bottom border + spacing)
+  process.stdout.moveCursor(0, -3);
   process.stdout.clearLine(0);
-  process.stdout.write(`${message}: ${yellow(hiddenPassword)}${NEWLINE}`);
-  process.stdout.moveCursor(0, 1);
+  process.stdout.write(formatPasswordRow(hiddenPassword) + NEWLINE);
+  process.stdout.clearLine(0);
+  log(blue(`└${horizontalLine}┘`));
+  log("");
 }
