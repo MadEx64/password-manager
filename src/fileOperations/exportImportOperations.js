@@ -1,17 +1,17 @@
 import fs from "fs";
 import os from "os";
 import inquirer from "inquirer";
-import { withAuthentication } from "./auth/authWrapper.js";
-import { getEncryptionKey } from "./auth/masterPasswordCache.js";
-import { decryptPassword, encryptPassword } from "./encryption/index.js";
-import { handleError } from "./errorHandler.js";
-import { NEWLINE } from "./constants.js";
-import validationTools from "./validation.js";
+import { withAuthentication } from "../auth/authWrapper.js";
+import { getEncryptionKey } from "../auth/masterPasswordCache.js";
+import { decryptPassword, encryptPassword } from "../encryption/index.js";
+import { handleError } from "../errorHandler.js";
+import { NEWLINE } from "../constants.js";
+import validationTools from "../validation.js";
 import {
   readPasswordEntries,
   writePasswordEntries,
-} from "./fileOperations/index.js";
-import { green, yellow, red, log } from "./logger.js";
+} from "./index.js";
+import { green, yellow, red, log } from "../logger.js";
 
 /**
  * Exports all passwords to a JSON file.
