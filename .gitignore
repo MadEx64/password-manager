@@ -7,17 +7,12 @@ yarn-error.log
 # Password manager data files
 .passwords
 .passwords.bak
-.masterPassword
-.masterPassword.bak
-.recovery_salt
-.recovery_salt.bak
+.passwords.migrated
 .lock
+src/database/password_vault.db
 
 # Backups
 .backups/
-
-# Cursor
-.cursor/
 
 # Test data
 test_data/
@@ -32,3 +27,6 @@ test_data/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Recovery audit log
+.recovery_audit.log
