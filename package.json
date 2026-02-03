@@ -25,6 +25,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@journeyapps/sqlcipher": "^5.3.1",
     "aes-js": "^3.1.2",
     "chalk": "^4.1.2",
     "clipboardy": "^2.3.0",

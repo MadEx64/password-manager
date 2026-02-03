@@ -5,6 +5,7 @@ export const BACKUP_DIR = join(BASE_DIR, '.backups');
 export const TEST_DIR = join(BASE_DIR, 'test_data');
 export const isTestMode = process.env.NODE_ENV === 'test';
 export const ROOT_DIR = isTestMode ? TEST_DIR : BASE_DIR;
+export const DB_DIR = join(ROOT_DIR, 'src', 'database');
 
 export const FILE_LOCK_TIMEOUT = 10000;
 export const FILE_ENCRYPTION_ENABLED = true;
@@ -16,10 +17,16 @@ export const CHARSET = 'utf-8';
  * @type {Object}
  * @property {string} PASSWORDS - Path to the passwords file.
  * @property {string} PASSWORDS_BACKUP - Path to the passwords backup file.
+ * @property {string} DATABASE - Path to the SQLite database file.
+ * @property {string} DATABASE_BACKUP - Path to the database backup file.
+ * @property {string} PASSWORDS_MIGRATED - Path to the archived passwords file after migration.
  */
 export const PATHS = {
   PASSWORDS: join(ROOT_DIR, '.passwords'),
   PASSWORDS_BACKUP: join(ROOT_DIR, '.passwords.bak'),
+  DATABASE: join(DB_DIR, 'password_vault.db'),
+  DATABASE_BACKUP: join(DB_DIR, 'password_vault.db.bak'),
+  PASSWORDS_MIGRATED: join(ROOT_DIR, '.passwords.migrated'),
 };
 
 /**
@@ -56,25 +63,6 @@ export const PASSWORD_STRENGTH = {
   }
 };
 
-/**
- * Error codes.
- * @type {Object} 
- * @property {string} INTERNAL_ERROR - Internal error. Default error code.
- * @property {string} AUTHENTICATION_FAILED - Authentication failed.
- * @property {string} INVALID_INPUT - Invalid user input (e.g. empty input).
- * @property {string} INVALID_PASSWORD_ENTRY - Invalid password entry (e.g. password entry structure is invalid).
- * @property {string} FILE_NOT_FOUND - File not found.
- * @property {string} PERMISSION_DENIED - Permission denied.
- * @property {string} DUPLICATE_IDENTIFIER - Duplicate identifier.
- * @property {string} DECRYPTION_FAILED - Decryption failed.
- * @property {string} ENCRYPTION_FAILED - Encryption failed.
- * @property {string} RECOVERY_KEY_GENERATION_FAILED - Recovery key generation failed.
- * @property {string} APP_SECRET_KEY_GENERATION_FAILED - Application secret key generation failed.
- * @property {string} AUTH_KEY_DERIVATION_FAILED - Authentication key derivation failed.
- * @property {string} MIGRATION_FAILED - Migration failed.
- * @property {string} FILE_CORRUPTED - File is corrupted.
- * @property {string} INVALID_ENCRYPTION_FORMAT - Invalid encryption format.
- */
 export const ERROR_CODES = {
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   AUTHENTICATION_FAILED: 'AUTHENTICATION_FAILED',
@@ -91,7 +79,16 @@ export const ERROR_CODES = {
   AUTH_KEY_DERIVATION_FAILED: 'AUTH_KEY_DERIVATION_FAILED',
   MIGRATION_FAILED: 'MIGRATION_FAILED',
   FILE_CORRUPTED: 'FILE_CORRUPTED',
-  INVALID_ENCRYPTION_FORMAT: 'INVALID_ENCRYPTION_FORMAT'
+  INVALID_ENCRYPTION_FORMAT: 'INVALID_ENCRYPTION_FORMAT',
+  DATABASE_ERROR: 'DATABASE_ERROR',
+  DATABASE_CONNECTION_FAILED: 'DATABASE_CONNECTION_FAILED',
+  DATABASE_INTEGRITY_FAILED: 'DATABASE_INTEGRITY_FAILED',
+  ROLLBACK_FAILED: 'ROLLBACK_FAILED'
+};
+
+export const DATABASE_CONFIG = {
+  SCHEMA_VERSION: 1,
+  CIPHER_ALGORITHM: 'aes-256-cbc'
 };
 
 /**
