@@ -10,6 +10,7 @@ import { readFileAsync } from "./index.js";
 import { listBackups } from "./backupOperations/backupOperations.js";
 import { createChecksum, verifyChecksum } from "./checksum.js";
 import { isFirstTimeSetup } from "../auth/secureAuth.js";
+import { databaseExists } from "../database/index.js";
 
 /**
  * Checks the integrity of the password vault, authentication system, and backups.
@@ -76,7 +77,7 @@ export async function checkAuthenticationIntegrity() {
 }
 
 /**
- * Performs a health check on the password vault.
+ * Performs a health check on the password vault (database or file).
  * Logs only essential information and potential errors.
  * @param {boolean} isFirstTimeSetup - Whether the application is being set up for the first time.
  * @returns {Promise<boolean>} True if the password vault is healthy, false otherwise.
@@ -86,36 +87,23 @@ export async function checkPasswordVaultIntegrity(isFirstTimeSetup) {
   let vaultMessages = [];
 
   try {
-    if (!fs.existsSync(PATHS.PASSWORDS)) {
-      if (isFirstTimeSetup) {
-        log(yellow("Creating your password vault..."));
-      } else {
-        log(yellow("Password vault not found. Creating new vault..."));
-      }
+    // Check if database exists - this is the preferred storage
+    if (databaseExists()) {
+      // Database exists, check its basic integrity
       try {
-        const { createPasswordVaultFile } = await import('./passwordVault.js');
-        await createPasswordVaultFile();
-        if (isFirstTimeSetup) {
-          log(green("✓ Password vault created successfully"));
-        } else {
-          log(
-            green(
-              "New password vault created. Please set a master password to begin adding entries." +
-                NEWLINE
-            )
-          );
+        const dbStats = fs.statSync(PATHS.DATABASE);
+        if (dbStats.size === 0) {
+          vaultMessages.push(red("Database file is empty or corrupted."));
+          vaultHealthy = false;
         }
-      } catch (creationError) {
-        log(
-          red(
-            "Failed to create new password vault: " +
-              creationError.message +
-              NEWLINE
-          )
-        );
+        // Database integrity will be fully verified after authentication
+        // when we can decrypt it
+      } catch (dbError) {
+        vaultMessages.push(red("Failed to access database: " + dbError.message));
         vaultHealthy = false;
       }
-    } else {
+    } else if (fs.existsSync(PATHS.PASSWORDS)) {
+      // Legacy file-based storage exists
       const fileBuffer = await readFileAsync(PATHS.PASSWORDS);
       const fileLength = fileBuffer.length;
       const metadata = getFileMetadata(fileBuffer);
@@ -143,6 +131,16 @@ export async function checkPasswordVaultIntegrity(isFirstTimeSetup) {
           vaultHealthy = false;
         }
       }
+    } else {
+      // No database and no file - first time setup or fresh install
+      if (isFirstTimeSetup) {
+        // For first time setup, we'll create storage after authentication
+        // The database will be created when the user authenticates
+        log(yellow("Welcome! Setting up your password manager..."));
+      } else {
+        // This shouldn't happen normally - no storage found but not first time
+        log(yellow("No password storage found. A new vault will be created after authentication."));
+      }
     }
     
     if (vaultMessages.length > 0 && !isFirstTimeSetup) {
@@ -159,6 +157,7 @@ export async function checkPasswordVaultIntegrity(isFirstTimeSetup) {
           NEWLINE
       )
     );
+    return false;
   }
 }
 
@@ -228,4 +227,4 @@ function getFileMetadata(fileBuffer) {
     isCorrupted: !verifyChecksum(fileBuffer, checksum),
   };
   return metadata;
-} 
+}
