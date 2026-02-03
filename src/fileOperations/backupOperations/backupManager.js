@@ -102,7 +102,6 @@ export const restoreBackupPasswordVault = withAuthentication(async () => {
       return false;
     }
 
-    // Format backup filenames for display
     const backupChoices = await Promise.all(
       backupFiles.map((path) => formatBackupChoice(path))
     );
@@ -127,10 +126,9 @@ export const restoreBackupPasswordVault = withAuthentication(async () => {
       return false;
     }
 
-    // Add navigation prompt here after user has selected a backup
     const navigationAction = await promptNavigation();
     if (navigationAction === NavigationAction.GO_BACK) {
-      return await restoreBackupPasswordVault(); // Let the user select a backup again
+      return await restoreBackupPasswordVault();
     } else if (navigationAction === NavigationAction.MAIN_MENU) {
       return NavigationAction.MAIN_MENU;
     }
@@ -211,7 +209,7 @@ export const deleteBackupPasswordVault = withAuthentication(async () => {
 
     const navigationAction = await promptNavigation();
     if (navigationAction === NavigationAction.GO_BACK) {
-      return await deleteBackupPasswordVault(); // Let the user select a backup again
+      return await deleteBackupPasswordVault();
     } else if (navigationAction === NavigationAction.MAIN_MENU) {
       return NavigationAction.MAIN_MENU;
     }
@@ -253,10 +251,11 @@ export const deleteBackupPasswordVault = withAuthentication(async () => {
     return false;
   }
 });
+
 /**
- * Formats the backup choice for display
- * @param {string} path - The path to the backup file
- * @returns {Promise<{ name: string, value: string }>} The formatted backup choice
+ * Formats the backup choice for display.
+ * @param {string} path - The path to the backup file.
+ * @returns {Promise<{ name: string, value: string }>} The formatted backup choice.
  */
 async function formatBackupChoice(path) {
   const filename = path.split("/").pop();
